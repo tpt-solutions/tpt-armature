@@ -1,0 +1,13 @@
+/target
+**/target
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Env / local overrides
+.env
+.env.local

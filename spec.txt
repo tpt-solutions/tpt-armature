@@ -1,0 +1,41 @@
+System Design Document: TPT Armature
+Version: 1.0
+Brand: TPT (TPT Solutions)
+Core Philosophy: "Expose the hidden framework." A memory-safe, high-performance, 100% Rust reverse engineering suite.
+1. Executive Summary & Purpose
+TPT Armature is a next-generation reverse engineering and binary analysis suite. Its purpose is to allow security researchers, developers, and analysts to dissect compiled software, understand its underlying logic, and map its control flow without the memory-safety vulnerabilities inherent in legacy C/C++ tools.
+Unlike traditional tools that rely on a mix of C++, Java, and Python, TPT Armature is built entirely in Rust. It leverages the tpt-appfront framework for a unified, cross-platform graphical interface, and utilizes Rust-native scripting for extensions, ensuring a seamless, secure, and blazing-fast user experience.
+2. The Tech Stack (100% Rust)
+Every single layer of TPT Armature is written in Rust. There are no foreign language runtimes (like Python or Node.js) required to run or extend the core application.
+A. The Core Engine (Analysis & Parsing)
+Language: Rust (100%)
+Binary Parsing: goblin (for parsing PE, ELF, and Mach-O executable formats).
+Disassembly: iced (for highly optimized x86/x64 disassembly) and yaxpeax (for ARM and other architectures). Both are pure Rust.
+Intermediate Representation (IR): A custom Rust-based IR to translate raw assembly into a standardized format for data-flow and control-flow analysis.
+B. The Presentation Layer (GUI)
+Framework: tpt-appfront
+Rendering Engine: egui (Immediate mode GUI).
+Why: Allows the entire UI to be written in Rust. It compiles down to native desktop applications (Windows, macOS, Linux) and can optionally render to a web browser via WebAssembly, all from a single Rust codebase.
+C. The Extension & Scripting Layer
+Native Scripting: Rhai (A lightweight, embeddable scripting language written in Rust. It looks like JavaScript but is strictly typed and natively integrates with Rust data structures).
+Sandboxed Plugins: wasmtime (Allows users to write plugins in any language, compile them to WebAssembly, and run them safely inside the Rust engine at near-native speeds).
+3. Architectural Layers (The "Gears" of the Armature)
+To keep the codebase manageable, TPT Armature is divided into four distinct architectural layers.
+Layer 1: Ingestion (Stripping the Casing)
+This layer is responsible for taking a raw, opaque binary file and stripping away the file-format headers.
+Action: Reads the raw bytes, identifies the architecture (x86, ARM), extracts the .text (code) and .data (variables) sections, and maps out the imported/exported symbols.
+Output: A clean, standardized memory map passed to the Analysis Layer.
+Layer 2: Analysis (Exposing the Framework)
+This is the "brain" of the Armature. It translates raw machine code into understandable logic.
+Disassembly: Converts machine code bytes into human-readable Assembly text.
+Control Flow Graphing (CFG): Analyzes jumps, calls, and loops to build a mathematical graph of how the program executes.
+Data Flow Analysis: Tracks where variables are created, modified, and destroyed.
+Layer 3: Presentation (The Canvas)
+This is where the user interacts with the data, powered by tpt-appfront.
+Hex Editor: A raw byte viewer with inline assembly mapping.
+Assembly Viewer: Syntax-highlighted assembly code with clickable cross-references (X-refs).
+Graph Visualizer: A node-and-edge canvas rendering the Control Flow Graphs.
+Layer 4: Extension (The Custom Gears)
+Allows the community to expand TPT Armature without modifying the core Rust code.
+Rhai Scripts: Quick, on-the-fly automation (e.g., "Write a Rhai script to automatically rename all functions that call the printf library").
+Wasm Plugins: Heavy-duty, sandboxed extensions (e.g., a custom debugger or a specialized malware unpacker).

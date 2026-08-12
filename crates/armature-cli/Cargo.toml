@@ -1,0 +1,21 @@
+[package]
+name = "armature-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "TPT Armature command-line driver (headless analysis pipeline)."
+
+[[bin]]
+name = "armature"
+path = "src/main.rs"
+
+[dependencies]
+armature-formats = { path = "../armature-formats" }
+armature-ir = { path = "../armature-ir" }
+armature-disasm = { path = "../armature-disasm" }
+armature-analysis = { path = "../armature-analysis" }
+clap.workspace = true
+anyhow.workspace = true

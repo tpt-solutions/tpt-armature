@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/TPT-Solutions/tpt-armature"
+homepage = "https://github.com/TPT-Solutions/tpt-armature"
+authors = ["TPT Solutions"]
+description = "A memory-safe, 100% Rust reverse engineering and binary analysis suite."
+
+[workspace.dependencies]
+goblin = "0.8"
+iced-x86 = "1.21"
+yaxpeax-arch = "0.3"
+yaxpeax-arm = "0.4"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+anyhow = "1"
+thiserror = "1"

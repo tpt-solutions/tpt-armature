@@ -1,0 +1,33 @@
+# cargo-deny configuration.
+# Keeps third-party license usage auditable and consistent with the
+# MIT / Apache-2.0 dual-license policy of TPT Armature.
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = []
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+version = 1
+multiple-versions = "allow"
+wildcards = "allow"
+
+[sources]
+version = 2
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
