@@ -96,7 +96,9 @@ impl MemoryMap {
 
     /// Return the first writable data section, if any.
     pub fn data_section(&self) -> Option<&Section> {
-        self.sections.iter().find(|s| s.is_writable && !s.data.is_empty())
+        self.sections
+            .iter()
+            .find(|s| s.is_writable && !s.data.is_empty())
     }
 
     /// Total bytes across all sections.

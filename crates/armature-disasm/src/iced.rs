@@ -50,8 +50,9 @@ impl Disassembler for IcedDisassembler {
             out_text.clear();
             formatter.format(&ins, &mut out_text);
 
-            let mnemonic = Mnemonic::from_str(&format!("{:?}", ins.mnemonic()).to_ascii_lowercase());
-            let operands = extract_operands(&ins);
+            let mnemonic =
+                Mnemonic::from_str(&format!("{:?}", ins.mnemonic()).to_ascii_lowercase());
+            let operands = extract_operands(&ins, &mut formatter);
 
             let offset = (ip - base) as usize;
             let raw = code
@@ -73,44 +74,56 @@ impl Disassembler for IcedDisassembler {
     }
 }
 
-fn reg_name(reg: iced_x86::Register) -> Option<String> {
+fn reg_name(fmt: &mut iced_x86::GasFormatter, reg: iced_x86::Register) -> Option<String> {
     if reg == iced_x86::Register::None {
-        None
-    } else {
-        Some(iced_x86::register_to_string(reg).to_string())
+        return None;
     }
+    let s = fmt.format_register(reg).to_string();
+    Some(s)
 }
 
-fn extract_operands(ins: &iced_x86::Instruction) -> Vec<Operand> {
+fn extract_operands(ins: &iced_x86::Instruction, fmt: &mut iced_x86::GasFormatter) -> Vec<Operand> {
     let mut operands = Vec::new();
     for i in 0..ins.op_count() {
-        match ins.op_kind(i) {
+        let kind = ins.op_kind(i);
+        match kind {
             iced_x86::OpKind::Register => {
-                if let Some(name) = reg_name(ins.op_register(i)) {
+                if let Some(name) = reg_name(fmt, ins.op_register(i)) {
                     operands.push(Operand::Reg(name));
                 }
             }
             iced_x86::OpKind::Memory => {
                 operands.push(Operand::Mem {
-                    base: reg_name(ins.memory_base()),
-                    index: reg_name(ins.memory_index()),
+                    base: reg_name(fmt, ins.memory_base()),
+                    index: reg_name(fmt, ins.memory_index()),
                     scale: ins.memory_index_scale() as u8,
-                    disp: ins.memory_displacement() as i64,
+                    disp: ins.memory_displacement64() as i64,
                 });
             }
             iced_x86::OpKind::NearBranch16
             | iced_x86::OpKind::NearBranch32
             | iced_x86::OpKind::NearBranch64 => {
-                operands.push(Operand::Imm(ins.near_branch_target()));
+                let target = match kind {
+                    iced_x86::OpKind::NearBranch16 => ins.near_branch16() as u64,
+                    iced_x86::OpKind::NearBranch32 => ins.near_branch32() as u64,
+                    _ => ins.near_branch64(),
+                };
+                operands.push(Operand::Imm(target));
             }
-            iced_x86::OpKind::FarBranch16 | iced_x86::OpKind::FarBranch32 => {
-                operands.push(Operand::Imm(ins.far_branch_target()));
+            iced_x86::OpKind::Immediate8
+            | iced_x86::OpKind::Immediate8_2nd
+            | iced_x86::OpKind::Immediate16
+            | iced_x86::OpKind::Immediate32
+            | iced_x86::OpKind::Immediate64
+            | iced_x86::OpKind::Immediate8to16
+            | iced_x86::OpKind::Immediate8to32
+            | iced_x86::OpKind::Immediate8to64
+            | iced_x86::OpKind::Immediate32to64 => {
+                operands.push(Operand::Imm(ins.immediate(i)));
             }
-            _ => {
-                if ins.is_immediate(i) {
-                    operands.push(Operand::Imm(ins.immediate(i)));
-                }
-            }
+            // Far branches, implicit segment-string operands, etc. are rendered
+            // by the formatter; we intentionally do not materialize them here.
+            _ => {}
         }
     }
     operands

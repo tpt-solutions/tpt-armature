@@ -55,12 +55,7 @@ impl DataFlow {
 
     /// All registers that appear in the summary.
     pub fn registers(&self) -> Vec<String> {
-        let mut names: Vec<String> = self
-            .defs
-            .keys()
-            .chain(self.uses.keys())
-            .cloned()
-            .collect();
+        let mut names: Vec<String> = self.defs.keys().chain(self.uses.keys()).cloned().collect();
         names.sort();
         names.dedup();
         names
@@ -90,19 +85,31 @@ mod tests {
         Instruction {
             address: addr,
             size: 4,
+            text: format!("{m}"),
             mnemonic: m,
             operands: ops,
             raw: vec![0; 4],
-            text: format!("{m}"),
         }
     }
 
     #[test]
     fn tracks_defs_and_uses() {
         let insns = vec![
-            ins(0x0, Mnemonic::Mov, vec![Operand::Reg("rax".into()), Operand::Imm(1)]),
-            ins(0x4, Mnemonic::Add, vec![Operand::Reg("rax".into()), Operand::Reg("rbx".into())]),
-            ins(0x8, Mnemonic::Mov, vec![Operand::Reg("rbx".into()), Operand::Reg("rax".into())]),
+            ins(
+                0x0,
+                Mnemonic::Mov,
+                vec![Operand::Reg("rax".into()), Operand::Imm(1)],
+            ),
+            ins(
+                0x4,
+                Mnemonic::Add,
+                vec![Operand::Reg("rax".into()), Operand::Reg("rbx".into())],
+            ),
+            ins(
+                0x8,
+                Mnemonic::Mov,
+                vec![Operand::Reg("rbx".into()), Operand::Reg("rax".into())],
+            ),
         ];
         let df = DataFlow::analyze(&insns);
         assert_eq!(df.creation_sites("rax"), &[0x0, 0x4]);

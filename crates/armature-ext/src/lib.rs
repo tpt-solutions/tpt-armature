@@ -18,4 +18,4 @@ pub use error::{ExtError, Result};
 pub use rhai_host::{default_rename_script, ScriptHost};
 
 #[cfg(feature = "wasm")]
-pub use wasm_host::{PluginApi, PluginHost};
+pub use wasm_host::{PluginApi, PluginHost, PluginOutput};

@@ -7,7 +7,11 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "armature", version, about = "TPT Armature — Rust reverse engineering suite (CLI)")]
+#[command(
+    name = "armature",
+    version,
+    about = "TPT Armature — Rust reverse engineering suite (CLI)"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -40,6 +44,14 @@ enum Command {
         /// Path to the binary.
         path: PathBuf,
     },
+    /// Run a Rhai automation script against the analyzed binary.
+    #[cfg(feature = "rhai")]
+    Script {
+        /// Path to the binary.
+        path: PathBuf,
+        /// Path to the `.rhai` script to execute.
+        script: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -52,6 +64,8 @@ fn main() -> anyhow::Result<()> {
         Command::Analyze { path, limit } => cmd_analyze(resolve(path), limit),
         Command::Disasm { path, limit } => cmd_disasm(resolve(path), limit),
         Command::Cfg { path } => cmd_cfg(resolve(path)),
+        #[cfg(feature = "rhai")]
+        Command::Script { path, script } => cmd_script(resolve(path), script),
     }
 }
 
@@ -85,10 +99,18 @@ fn cmd_analyze(path: PathBuf, limit: usize) -> anyhow::Result<()> {
     } else {
         analysis.instructions.len().min(limit)
     };
-    println!("instructions : {} (showing {})", analysis.instructions.len(), total);
+    println!(
+        "instructions : {} (showing {})",
+        analysis.instructions.len(),
+        total
+    );
+    println!("functions    : {}", analysis.module.functions.len());
     println!("{}", analysis.cfg.summary());
     println!("xrefs        : {}", analysis.xrefs.count());
-    println!("registers    : {}", analysis.dataflow.registers().join(", "));
+    println!(
+        "registers    : {}",
+        analysis.dataflow.registers().join(", ")
+    );
 
     Ok(())
 }
@@ -119,19 +141,42 @@ fn cmd_cfg(path: PathBuf) -> anyhow::Result<()> {
     let bytes = load(path)?;
     let analysis = armature_analysis::analyze_binary(&bytes)?;
     println!("{}", analysis.cfg.summary());
-    for e in &analysis.cfg.edges {
+    const CAP: usize = 200;
+    let shown = analysis.cfg.edges.len().min(CAP);
+    for e in &analysis.cfg.edges[..shown] {
         let from = analysis.cfg.nodes[e.from].start;
         println!(
             "  block 0x{:x} --[{}]--> block 0x{:x} (0x{:x})",
             from, e.kind, analysis.cfg.nodes[e.to].start, e.target_addr
         );
     }
+    if analysis.cfg.edges.len() > CAP {
+        println!("  ... {} more edge(s) not shown", analysis.cfg.edges.len() - CAP);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "rhai")]
+fn cmd_script(path: PathBuf, script: PathBuf) -> anyhow::Result<()> {
+    let bytes = load(path)?;
+    let analysis = armature_analysis::analyze_binary(&bytes)?;
+    let source = std::fs::read_to_string(&script)
+        .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", script.display()))?;
+    let host = armature_ext::ScriptHost::new(&analysis);
+    let renames = host.run(&source)?;
+    println!("== TPT Armature :: Script ==");
+    if renames.is_empty() {
+        println!("script produced no renames");
+    } else {
+        let mut entries: Vec<_> = renames.iter().collect();
+        entries.sort_by_key(|(addr, _)| **addr);
+        for (addr, name) in entries {
+            println!("0x{addr:x} -> {name}");
+        }
+    }
     Ok(())
 }
 
 fn hex_bytes(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>()
+    bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
 }

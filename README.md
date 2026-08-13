@@ -28,7 +28,20 @@ See [`spec.txt`](./spec.txt) for the full System Design Document.
 cargo build --workspace
 cargo run -p armature-cli -- analyze path/to/binary
 cargo run -p armature-cli -- disasm path/to/binary
+# Run a Rhai automation script (needs the `rhai` feature):
+cargo run -p armature-cli --features rhai -- script path/to/binary crates/armature-ext/scripts/summary.rhai
 ```
+
+Feature flags (keep the default workspace build light):
+
+| Flag    | Enables                                  |
+| ------- | ---------------------------------------- |
+| `arm`   | ARM / AArch64 disassembly (yaxpeax)      |
+| `app`   | Native `egui` GUI (`armature-gui`)       |
+| `rhai`  | Rhai scripting (`armature-ext` + `script` subcommand) |
+| `wasm`  | Sandboxed Wasm plugins (`armature-ext`)  |
+
+Build everything with `cargo build --workspace --all-features`.
 
 The GUI lives in `armature-gui`; build and run it with the `app` feature:
 
@@ -36,9 +49,23 @@ The GUI lives in `armature-gui`; build and run it with the `app` feature:
 cargo run -p armature-gui --features app -- path/to/binary
 ```
 
+### Demo with no sample binary required
+
+`just demo` builds the CLI and analyzes the freshly built binary itself, so you
+can see output immediately without supplying a target.
+
+## Examples & templates
+
+- Rhai scripts in [`crates/armature-ext/scripts/`](./crates/armature-ext/scripts):
+  `auto_rename_printf`, `list_imports`, `find_crypto`, `rename_by_prefix`, `summary`.
+- A Wasm plugin guest template in
+  [`crates/armature-ext/examples/plugins/hello`](./crates/armature-ext/examples/plugins/hello).
+- Getting-started and scripting guides in [`docs/`](./docs).
+
 ## Status
 
 This is an active build following `todo.md`. The ingestion, IR, disassembly,
 analysis, and CLI layers are functional for x86/x64. ARM/AArch64 disassembly is
 available behind the `arm` feature, and the extension layer (Rhai / wasmtime)
-behind the `rhai` and `wasm` features.
+behind the `rhai` and `wasm` features. Mach-O entry points and exports are now
+resolved to virtual addresses.

@@ -162,25 +162,23 @@ impl Cfg {
     }
 }
 
-/// Build a CFG from a module's single function.
+/// Build a CFG over every function in the module (a combined graph).
 pub fn build_cfg(module: &armature_ir::Module) -> Cfg {
-    let blocks = module
-        .functions
-        .first()
-        .map(|f| f.blocks.clone())
-        .unwrap_or_default();
+    let mut blocks = Vec::new();
+    for f in &module.functions {
+        blocks.extend(f.blocks.clone());
+    }
     Cfg::from_blocks(blocks)
 }
 
 fn branch_imm(term: &Instruction) -> Option<u64> {
     match &term.mnemonic {
-        Mnemonic::Jmp | Mnemonic::Jcc(_) | Mnemonic::Call => term
-            .operands
-            .iter()
-            .find_map(|o| match o {
+        Mnemonic::Jmp | Mnemonic::Jcc(_) | Mnemonic::Call => {
+            term.operands.iter().find_map(|o| match o {
                 Operand::Imm(v) => Some(*v),
                 _ => None,
-            }),
+            })
+        }
         _ => None,
     }
 }
@@ -206,22 +204,25 @@ fn count_back_edges(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use armature_ir::{Function, Instruction, Mnemonic, Operand};
+    use armature_ir::{Instruction, Mnemonic, Operand};
     use std::collections::HashMap;
 
     fn ins(addr: u64, m: Mnemonic, ops: Vec<Operand>) -> Instruction {
         Instruction {
             address: addr,
             size: 4,
+            text: format!("{m}"),
             mnemonic: m,
             operands: ops,
             raw: vec![0; 4],
-            text: format!("{m}"),
         }
     }
 
     fn block(id: usize, start: u64, insns: Vec<Instruction>) -> BasicBlock {
-        let end = insns.last().map(|i| i.address + i.size as u64).unwrap_or(start);
+        let end = insns
+            .last()
+            .map(|i| i.address + i.size as u64)
+            .unwrap_or(start);
         BasicBlock {
             id,
             start,
@@ -232,33 +233,59 @@ mod tests {
 
     #[test]
     fn cfg_loop_detection() {
-        // block 0: jmp 0x100 -> loop back-edge (0x100 < 0x100? no) ... build a real loop:
-        // 0x100: cmp; 0x104: je 0x100 (back-edge); 0x108: jmp 0x200; 0x200: ret
-        let mut blocks = Vec::new();
+        // A real loop: the tail of block 1 jumps back to block 0 (0x100 < 0x200).
+        // 0x100: mov            (block 0)
+        // 0x104: jmp 0x200      (block 0 -> block 1)
+        // 0x200: add            (block 1)
+        // 0x204: cmp            (block 1)
+        // 0x208: jne 0x200      (block 1 self-loop)
+        // 0x20c: jmp 0x100      (block 1 -> block 0 : back-edge / loop)
+        // 0x300: ret            (block 2)
+        let mut blocks = vec![
+            block(
+                0,
+                0x100,
+                vec![
+                    ins(0x100, Mnemonic::Mov, vec![]),
+                    ins(0x104, Mnemonic::Jmp, vec![Operand::Imm(0x200)]),
+                ],
+            ),
+        ];
         blocks.push(block(
-            0,
-            0x100,
+            1,
+            0x200,
             vec![
-                ins(0x100, Mnemonic::Cmp, vec![]),
-                ins(0x104, Mnemonic::Jcc("z".into()), vec![Operand::Imm(0x100)]),
-                ins(0x109, Mnemonic::Jmp, vec![Operand::Imm(0x200)]),
+                ins(0x200, Mnemonic::Add, vec![]),
+                ins(0x204, Mnemonic::Cmp, vec![]),
+                ins(0x208, Mnemonic::Jcc("ne".into()), vec![Operand::Imm(0x200)]),
+                ins(0x20c, Mnemonic::Jmp, vec![Operand::Imm(0x100)]),
             ],
         ));
-        blocks.push(block(1, 0x200, vec![ins(0x200, Mnemonic::Ret, vec![])]));
+        blocks.push(block(2, 0x300, vec![ins(0x300, Mnemonic::Ret, vec![])]));
 
         let cfg = Cfg::from_blocks(blocks);
-        assert_eq!(cfg.block_count(), 2);
-        // unconditional jmp 0x200 -> block1, jcc 0x100 -> block0 (back-edge)
-        assert!(cfg.edges.iter().any(|e| e.kind == EdgeKind::Unconditional && e.to == 1));
-        assert!(cfg.edges.iter().any(|e| e.kind == EdgeKind::Conditional && e.to == 0));
+        assert_eq!(cfg.block_count(), 3);
+        // unconditional jmp 0x100 from block 1 -> block 0 (back-edge)
+        assert!(cfg
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Unconditional && e.to == 0 && e.target_addr == 0x100));
         assert_eq!(cfg.loop_count, 1);
     }
 
     #[test]
     fn cfg_fallthrough() {
-        let mut blocks = Vec::new();
-        blocks.push(block(0, 0x0, vec![ins(0x0, Mnemonic::Mov, vec![]), ins(0x4, Mnemonic::Ret, vec![])]));
-        blocks.push(block(1, 0x8, vec![ins(0x8, Mnemonic::Nop, vec![])]));
+        let blocks = vec![
+            block(
+                0,
+                0x0,
+                vec![
+                    ins(0x0, Mnemonic::Mov, vec![]),
+                    ins(0x4, Mnemonic::Ret, vec![]),
+                ],
+            ),
+            block(1, 0x8, vec![ins(0x8, Mnemonic::Nop, vec![])]),
+        ];
         let cfg = Cfg::from_blocks(blocks);
         // ret is terminal; the nop block has no predecessor but exists.
         assert_eq!(cfg.block_count(), 2);

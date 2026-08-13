@@ -3,8 +3,10 @@
 //! Plugins are compiled to wasm32 and instantiate inside a [`wasmtime`]
 //! sandbox. The guest ABI is the `armature` module, which exposes the host
 //! functions [`PluginApi`] documents. A plugin's entry point is `armature_run`
-//! (falling back to `_start`).
+//! (falling back to `_start`). Renames and log lines the guest produces are
+//! returned in [`PluginOutput`].
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -15,12 +17,23 @@ use armature_analysis::Analysis;
 /// * `armature::log(ptr: i32, len: i32)` — emit a log line from guest memory.
 /// * `armature::get_instruction_count() -> i64` — total decoded instructions.
 /// * `armature::rename(addr: i64, ptr: i32, len: i32)` — propose a symbol rename.
+///   `ptr`/`len` describe a UTF-8 name in the guest's exported `memory`.
 pub struct PluginApi;
+
+/// What a plugin run produced: log lines and proposed renames.
+#[derive(Debug, Default, Clone)]
+pub struct PluginOutput {
+    /// Lines the plugin emitted via `armature::log`.
+    pub logs: Vec<String>,
+    /// Address -> proposed name, from `armature::rename`.
+    pub renames: HashMap<i64, String>,
+}
 
 #[derive(Default)]
 struct HostState {
     log: Mutex<Vec<String>>,
     instruction_count: i64,
+    renames: Mutex<HashMap<i64, String>>,
 }
 
 /// A sandboxed plugin loaded from a wasm file.
@@ -35,8 +48,8 @@ impl PluginHost {
     pub fn load(path: &Path) -> Result<Self, crate::ExtError> {
         let mut config = wasmtime::Config::new();
         config.wasm_multi_memory(false);
-        let engine = wasmtime::Engine::new(&config)
-            .map_err(|e| crate::ExtError::Wasm(e.to_string()))?;
+        let engine =
+            wasmtime::Engine::new(&config).map_err(|e| crate::ExtError::Wasm(e.to_string()))?;
         let module = wasmtime::Module::from_file(&engine, path)
             .map_err(|e| crate::ExtError::Wasm(e.to_string()))?;
         Ok(PluginHost {
@@ -51,8 +64,9 @@ impl PluginHost {
         self.state.instruction_count = analysis.instructions.len() as i64;
     }
 
-    /// Instantiate and run the plugin, returning the log lines it emitted.
-    pub fn run(&mut self) -> Result<Vec<String>, crate::ExtError> {
+    /// Instantiate and run the plugin, returning the log lines and renames it
+    /// emitted.
+    pub fn run(&mut self) -> Result<PluginOutput, crate::ExtError> {
         let mut store = wasmtime::Store::new(&self.engine, HostState::default());
         store.data_mut().instruction_count = self.state.instruction_count;
 
@@ -63,15 +77,14 @@ impl PluginHost {
                 "armature",
                 "log",
                 |mut caller: wasmtime::Caller<'_, HostState>, ptr: i32, len: i32| {
-                    if let Some(mem) = caller
-                        .get_export("memory")
-                        .and_then(|e| e.into_memory())
-                    {
-                        let start = ptr as usize;
-                        let end = start + len as usize;
-                        if let Ok(data) = mem.read(&caller, start, end - start) {
-                            let line = String::from_utf8_lossy(data).to_string();
-                            caller.data().log.lock().unwrap().push(line);
+                    if let Some(mem) = caller.get_export("memory").and_then(|e| e.into_memory()) {
+                        let start = ptr.max(0) as usize;
+                        let end = start + len.max(0) as usize;
+                        let mut buf = vec![0u8; end.saturating_sub(start).max(1)];
+                        if mem.read(&caller, start, &mut buf).is_ok() {
+                            caller.data().log.lock().unwrap().push(
+                                String::from_utf8_lossy(&buf).to_string(),
+                            );
                         }
                     }
                 },
@@ -92,8 +105,20 @@ impl PluginHost {
             .func_wrap(
                 "armature",
                 "rename",
-                |caller: wasmtime::Caller<'_, HostState>, _addr: i64, _ptr: i32, _len: i32| {
-                    let _ = caller.data();
+                |mut caller: wasmtime::Caller<'_, HostState>, addr: i64, ptr: i32, len: i32| {
+                    if let Some(mem) = caller.get_export("memory").and_then(|e| e.into_memory()) {
+                        let start = ptr.max(0) as usize;
+                        let end = start + len.max(0) as usize;
+                        let mut buf = vec![0u8; end.saturating_sub(start).max(1)];
+                        if mem.read(&caller, start, &mut buf).is_ok() {
+                            caller
+                                .data()
+                                .renames
+                                .lock()
+                                .unwrap()
+                                .insert(addr, String::from_utf8_lossy(&buf).to_string());
+                        }
+                    }
                 },
             )
             .map_err(|e| crate::ExtError::Wasm(e.to_string()))?;
@@ -110,6 +135,10 @@ impl PluginHost {
             }
         }
 
-        Ok(store.into_data().log.into_inner().unwrap())
+        let data = store.into_data();
+        Ok(PluginOutput {
+            logs: data.log.into_inner().unwrap(),
+            renames: data.renames.into_inner().unwrap(),
+        })
     }
 }

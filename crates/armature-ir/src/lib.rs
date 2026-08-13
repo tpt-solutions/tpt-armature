@@ -6,9 +6,9 @@
 //! types here, and every analysis (CFG, data-flow, X-refs) consumes them.
 
 pub mod builder;
-pub mod operand;
 pub mod instr;
+pub mod operand;
 
-pub use builder::{IrBuilder, Module};
+pub use builder::{recover_functions, IrBuilder, Module};
 pub use instr::{BasicBlock, Function, Instruction, Mnemonic};
 pub use operand::Operand;

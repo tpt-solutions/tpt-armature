@@ -38,6 +38,7 @@ pub enum Mnemonic {
 
 impl Mnemonic {
     /// Map a raw assembler mnemonic string to the IR [`Mnemonic`].
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Mnemonic {
         let lower = s.to_ascii_lowercase();
         match lower.as_str() {

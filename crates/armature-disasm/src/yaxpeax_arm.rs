@@ -2,9 +2,8 @@
 
 use crate::disassembler::Disassembler;
 use crate::error::Result;
-use armature_ir::Instruction;
-
-use yaxpeax_arch::*;
+use armature_ir::{Instruction, Mnemonic};
+use yaxpeax_arch::{Arch, Decoder, U8Reader};
 
 /// Disassembler backed by `yaxpeax` for 32-bit ARM or 64-bit AArch64.
 pub struct YaxpeaxArm {
@@ -19,50 +18,51 @@ impl YaxpeaxArm {
     }
 }
 
+macro_rules! disasm_arch {
+    ($arch:ty, $bytes:expr, $base:expr) => {{
+        let mut reader = U8Reader::new($bytes);
+        let decoder = <$arch as Arch>::Decoder::default();
+        let mut out = Vec::new();
+        let mut addr: u64 = 0;
+        loop {
+            match decoder.decode(&mut reader) {
+                Ok(insn) => {
+                    let text = format!("{insn}");
+                    let raw = $bytes
+                        .get(addr as usize..)
+                        .map(|s| s.iter().take(4).copied().collect())
+                        .unwrap_or_default();
+                    let mnem = format!("{insn:?}")
+                        .split(' ')
+                        .next()
+                        .unwrap_or("?")
+                        .to_ascii_lowercase();
+                    out.push(Instruction {
+                        address: $base + addr,
+                        size: 4,
+                        mnemonic: Mnemonic::Other(mnem),
+                        operands: Vec::new(),
+                        raw,
+                        text,
+                    });
+                    addr += 4;
+                }
+                Err(_) => break,
+            }
+        }
+        out
+    }};
+}
+
 impl Disassembler for YaxpeaxArm {
     fn disassemble(&self, code: &[u8], base: u64) -> Result<Vec<Instruction>> {
         if code.is_empty() {
             return Ok(Vec::new());
         }
         if self.is64 {
-            Ok(disasm::<yaxpeax_arm::armv8::AArch64>(code, base))
+            Ok(disasm_arch!(yaxpeax_arm::armv8::a64::ARMv8, code, base))
         } else {
-            Ok(disasm::<yaxpeax_arm::arm::ArmArch>(code, base))
+            Ok(disasm_arch!(yaxpeax_arm::armv7::ARMv7, code, base))
         }
     }
-}
-
-fn disasm<A>(bytes: &[u8], base: u64) -> Vec<Instruction>
-where
-    A: Arch,
-    A::Address: Into<u64> + Copy,
-    A::Instruction: std::fmt::Display + std::fmt::Debug,
-{
-    let mut reader = U8Reader::new(bytes);
-    let mut decoder = <A as Arch>::Decoder::default();
-    let mut insn = <A as Arch>::Instruction::default();
-    let mut out = Vec::new();
-
-    loop {
-        match decoder.decode(&mut reader, &mut insn) {
-            Ok(()) => {
-                let addr: u64 = insn.address.into();
-                let text = format!("{insn}");
-                let raw = bytes
-                    .get((addr as usize)..)
-                    .map(|s| s[..s.len().min(4)].to_vec())
-                    .unwrap_or_default();
-                out.push(Instruction {
-                    address: base + addr,
-                    size: 4,
-                    mnemonic: armature_ir::Mnemonic::Other(format!("{:?}", insn).split(' ').next().unwrap_or("?").to_string().to_ascii_lowercase()),
-                    operands: Vec::new(),
-                    raw,
-                    text,
-                });
-            }
-            Err(_) => break,
-        }
-    }
-    out
 }

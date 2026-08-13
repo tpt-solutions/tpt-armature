@@ -108,8 +108,14 @@ mod tests {
     #[test]
     fn pe_machine_mapping() {
         assert_eq!(from_pe_machine(IMAGE_FILE_MACHINE_I386), Architecture::X86);
-        assert_eq!(from_pe_machine(IMAGE_FILE_MACHINE_AMD64), Architecture::X86_64);
-        assert_eq!(from_pe_machine(IMAGE_FILE_MACHINE_ARM64), Architecture::Aarch64);
+        assert_eq!(
+            from_pe_machine(IMAGE_FILE_MACHINE_AMD64),
+            Architecture::X86_64
+        );
+        assert_eq!(
+            from_pe_machine(IMAGE_FILE_MACHINE_ARM64),
+            Architecture::Aarch64
+        );
     }
 
     #[test]

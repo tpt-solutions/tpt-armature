@@ -276,6 +276,7 @@ dependencies = [
  "anyhow",
  "armature-analysis",
  "armature-disasm",
+ "armature-ext",
  "armature-formats",
  "armature-ir",
  "clap",

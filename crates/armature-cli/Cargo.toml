@@ -17,5 +17,11 @@ armature-formats = { path = "../armature-formats" }
 armature-ir = { path = "../armature-ir" }
 armature-disasm = { path = "../armature-disasm" }
 armature-analysis = { path = "../armature-analysis" }
+armature-ext = { path = "../armature-ext", optional = true }
 clap.workspace = true
 anyhow.workspace = true
+
+[features]
+default = []
+# Enable the `script` subcommand (Rhai automation).
+rhai = ["dep:armature-ext", "armature-ext/rhai"]

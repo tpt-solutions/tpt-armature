@@ -57,8 +57,11 @@ pub fn build_xrefs(instructions: &[Instruction], symbols: &[Export]) -> XrefInde
     let code_addrs: std::collections::HashSet<u64> =
         instructions.iter().map(|i| i.address).collect();
 
-    let symbol_addrs: std::collections::HashSet<u64> =
-        symbols.iter().filter(|s| s.addr != 0).map(|s| s.addr).collect();
+    let symbol_addrs: std::collections::HashSet<u64> = symbols
+        .iter()
+        .filter(|s| s.addr != 0)
+        .map(|s| s.addr)
+        .collect();
 
     let mut refs_to: HashMap<u64, Vec<Xref>> = HashMap::new();
     for ins in instructions {
@@ -85,10 +88,7 @@ pub fn build_xrefs(instructions: &[Instruction], symbols: &[Export]) -> XrefInde
 }
 
 /// Build an X-ref index over every instruction in a module.
-pub fn build_xrefs_for_module(
-    module: &armature_ir::Module,
-    symbols: &[Export],
-) -> XrefIndex {
+pub fn build_xrefs_for_module(module: &armature_ir::Module, symbols: &[Export]) -> XrefIndex {
     let mut instructions = Vec::new();
     for f in &module.functions {
         for b in &f.blocks {
@@ -107,10 +107,10 @@ mod tests {
         Instruction {
             address: addr,
             size: 4,
+            text: format!("{m}"),
             mnemonic: m,
             operands: ops,
             raw: vec![0; 4],
-            text: format!("{m}"),
         }
     }
 
@@ -118,7 +118,11 @@ mod tests {
     fn code_and_symbol_xrefs() {
         let insns = vec![
             ins(0x100, Mnemonic::Call, vec![Operand::Imm(0x200)]),
-            ins(0x104, Mnemonic::Mov, vec![Operand::Reg("rax".into()), Operand::Imm(0x500)]),
+            ins(
+                0x104,
+                Mnemonic::Mov,
+                vec![Operand::Reg("rax".into()), Operand::Imm(0x500)],
+            ),
             ins(0x200, Mnemonic::Ret, vec![]),
         ];
         let symbols = vec![Export {
