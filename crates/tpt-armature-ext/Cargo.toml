@@ -1,0 +1,37 @@
+[package]
+name = "tpt-armature-ext"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Layer 4 extension: Rhai scripting and wasmtime sandboxed plugins."
+readme = "README.md"
+keywords = [
+    "reverse-engineering",
+    "binary-analysis",
+    "scripting",
+    "rhai",
+    "wasm-plugin",
+    "extensibility",
+]
+categories = [
+    "development-tools",
+    "wasm",
+]
+
+[dependencies]
+tpt-armature-formats = { path = "../tpt-armature-formats" }
+tpt-armature-ir = { path = "../tpt-armature-ir" }
+tpt-armature-analysis = { path = "../tpt-armature-analysis" }
+thiserror.workspace = true
+rhai = { version = "1", optional = true }
+wasmtime = { version = "47", optional = true }
+
+[features]
+default = []
+# Lightweight, natively-integrated scripting.
+rhai = ["dep:rhai"]
+# Sandboxed WebAssembly plugin host.
+wasm = ["dep:wasmtime"]

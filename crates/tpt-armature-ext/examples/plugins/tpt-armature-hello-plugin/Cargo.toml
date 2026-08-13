@@ -1,0 +1,13 @@
+[package]
+name = "tpt-armature-hello-plugin"
+version = "0.1.0"
+edition = "2021"
+description = "Example TPT Armature Wasm plugin guest (sandboxed extension sample)."
+readme = "README.md"
+keywords = ["reverse-engineering", "wasm-plugin", "tpt-armature", "example"]
+categories = ["development-tools", "wasm"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]

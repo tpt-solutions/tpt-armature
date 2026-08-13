@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
-exclude = ["crates/armature-ext/examples/plugins/hello"]
+exclude = ["crates/tpt-armature-ext/examples/plugins/tpt-armature-hello-plugin"]
 
 [workspace.package]
 edition = "2021"

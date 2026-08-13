@@ -1,0 +1,21 @@
+[package]
+name = "tpt-armature-sample"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Annotated sample binary used for manual QA of the TPT Armature analyzer."
+readme = "README.md"
+keywords = ["reverse-engineering", "binary-analysis", "tpt-armature", "sample"]
+categories = ["development-tools"]
+
+# Standalone sample (not a workspace member) used for manual QA of the
+# analyzer. Build it with `just build-samples` or directly:
+#   cargo build --release --manifest-path examples/tpt-armature-sample/Cargo.toml
+# Cross-compile for other formats/architectures by adding `--target`:
+#   cargo build --release --target aarch64-unknown-linux-gnu ...   (ELF / ARM64)
+#   cargo build --release --target x86_64-apple-darwin ...         (Mach-O / x64)
+#   cargo build --release --target aarch64-pc-windows-msvc ...     (PE / ARM64)
+
+[workspace]
+
+[dependencies]

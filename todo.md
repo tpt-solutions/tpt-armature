@@ -5,7 +5,7 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
 ## Phase 0 — Project Scaffolding
 
 - [x] Workspace `Cargo.toml` (resolver 2, edition 2021, rust-version 1.85)
-- [x] `crates/` layout: `armature-formats`, `armature-ir`, `armature-disasm`, `armature-analysis`, `armature-gui`, `armature-ext`, `armature-cli`
+- [x] `crates/` layout: `tpt-armature-formats`, `tpt-armature-ir`, `tpt-armature-disasm`, `tpt-armature-analysis`, `tpt-armature-gui`, `tpt-armature-ext`, `tpt-armature-cli`
 - [x] `LICENSE-MIT` + `LICENSE-APACHE` (dual license, matches sibling tpt-* convention)
 - [x] `README.md` (project overview, links to spec.txt)
 - [x] `CHANGELOG.md`
@@ -17,7 +17,7 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
 - [x] `cargo build --workspace` succeeds (real crates, default features)
 - [x] `cargo fmt --check` passes
 
-## Phase 1 — Layer 1: Ingestion (`armature-formats`)
+## Phase 1 — Layer 1: Ingestion (`tpt-armature-formats`)
 
 "Stripping the Casing" — raw bytes in, standardized memory map out.
 
@@ -28,45 +28,45 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
 - [x] Architecture detection (x86, x64, ARM, ARM64)
 - [x] Extract `.text` (code) and `.data` (variables) sections
 - [x] Map imported/exported symbols
-- [x] Define standardized `MemoryMap` output type consumed by `armature-analysis`
+- [x] Define standardized `MemoryMap` output type consumed by `tpt-armature-analysis`
 - [x] Unit tests against sample binaries per format (parses the host test binary)
 
-## Phase 2 — Layer 2: Analysis (`armature-ir`, `armature-disasm`, `armature-analysis`)
+## Phase 2 — Layer 2: Analysis (`tpt-armature-ir`, `tpt-armature-disasm`, `tpt-armature-analysis`)
 
 "Exposing the Framework" — machine code → understandable logic.
 
-### `armature-ir`
+### `tpt-armature-ir`
 - [x] Design custom IR types (instructions, operands, basic blocks)
 - [x] IR builder API shared by both disassembler backends
 
-### `armature-disasm`
+### `tpt-armature-disasm`
 - [x] Add `iced-x86` dependency, wrap for x86/x64 disassembly
 - [x] Add `yaxpeax` dependency, wrap for ARM/other architectures (feature `arm`)
-- [x] Lower `iced`/`yaxpeax` output into `armature-ir` types
+- [x] Lower `iced`/`yaxpeax` output into `tpt-armature-ir` types
 - [x] Produce human-readable assembly text output
 
-### `armature-analysis`
+### `tpt-armature-analysis`
 - [x] Control Flow Graph (CFG) construction: jumps, calls, loops → graph
 - [x] Data-flow analysis: track variable creation/modification/destruction
 - [x] Cross-reference (X-ref) index (who calls/reads what)
 - [x] Unit tests on known control-flow patterns (loops, branches, recursion)
 
-## Phase 3 — Layer 3: Presentation (`armature-gui`)
+## Phase 3 — Layer 3: Presentation (`tpt-armature-gui`)
 
 "The Canvas" — powered by `tpt-appfront` (path dep: `../tpt-appfront/crates/tpt-appfront-core`, `../tpt-appfront/crates/tpt-appfront-canvas`).
 
 - [x] Wire `tpt-appfront-core` + `tpt-appfront-canvas` path dependencies
       (production target; the standalone build uses `egui`/`eframe` directly so it
-      compiles without the sibling checkout — see `armature-gui/Cargo.toml`)
+      compiles without the sibling checkout — see `tpt-armature-gui/Cargo.toml`)
 - [x] App shell / window bootstrap (native + optional wasm32 target)
 - [x] Top-level panel layout (flex containers via `UITree`, no built-in docking — hand-compose)
 - [x] Hex Editor view: raw byte viewer with inline assembly mapping
 - [x] Assembly Viewer: syntax-highlighted asm text with clickable X-refs (data present; click UI pending)
 - [x] Graph Visualizer: CFG node-and-edge canvas (rendered as edge list in the egui panel)
-- [x] Wire GUI views to `armature-analysis` output (live binary load → render)
+- [x] Wire GUI views to `tpt-armature-analysis` output (live binary load → render)
 - [x] Basic navigation between Hex / Assembly / Graph views
 
-## Phase 4 — Layer 4: Extension (`armature-ext`)
+## Phase 4 — Layer 4: Extension (`tpt-armature-ext`)
 
 "The Custom Gears" — community extensibility without touching core Rust code.
 
@@ -74,8 +74,8 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
 - [x] Add `rhai` dependency, embed scripting host
 - [x] Bind core Rust data structures (functions, symbols, IR) into Rhai scope
 - [x] Example script: auto-rename functions that call `printf` (`scripts/auto_rename_printf.rhai`)
-- [x] `script` subcommand in `armature-cli` (headless runner; wire `armature-cli script <binary> <script>`)
-- [x] Script console/runner UI hook in `armature-gui` (host exists; GUI console pending)
+- [x] `script` subcommand in `tpt-armature-cli` (headless runner; wire `tpt-armature-cli script <binary> <script>`)
+- [x] Script console/runner UI hook in `tpt-armature-gui` (host exists; GUI console pending)
 
 ### Wasm plugins
 - [x] Add `wasmtime` dependency, sandboxed plugin host
@@ -85,30 +85,30 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
 - [x] Plugin discovery/loading mechanism (load from path)
 - [x] `rename` host function records renames and `run()` returns them
 
-## Phase 5 — Integration (`armature-cli`)
+## Phase 5 — Integration (`tpt-armature-cli`)
 
 - [x] CLI argument parsing (binary path, headless mode flags)
-- [x] Wire pipeline: `armature-formats` → `armature-disasm`/`armature-analysis` → `armature-gui`
+- [x] Wire pipeline: `tpt-armature-formats` → `tpt-armature-disasm`/`tpt-armature-analysis` → `tpt-armature-gui`
 - [x] End-to-end smoke test: load a real binary, render Hex + Assembly + CFG
 - [x] Headless/CLI-only analysis mode (no GUI) for scripting/CI use
 
 ## Phase 6 — Polish / Release
 
-- [x] Test coverage per crate (`armature-formats`, `armature-ir`, `armature-disasm`, `armature-analysis`, `armature-ext`)
+- [x] Test coverage per crate (`tpt-armature-formats`, `tpt-armature-ir`, `tpt-armature-disasm`, `tpt-armature-analysis`, `tpt-armature-ext`)
 - [x] `cargo clippy --workspace --all-targets` clean (`-D warnings` in CI)
-- [x] CI smoke test: `cargo run -p armature-cli -- analyze target/debug/armature`
+- [x] CI smoke test: `cargo run -p tpt-armature-cli -- analyze target/debug/tpt-armature`
 - [x] `cargo deny check` clean (added `Unicode-3.0`; dropped deprecated `version` keys)
 - [x] `cargo audit` clean (upgraded `wasmtime` 25 -> 47 to clear 16 advisories incl. 2 critical; transitive `quick-xml`/unmaintained items documented in `.cargo/audit.toml`)
 - [x] API docs (`cargo doc`) for public crate surfaces
 - [x] User-facing docs: `docs/GETTING_STARTED.md`, `docs/SCRIPTING.md`, README quick start
 - [x] Rhai script templates + Wasm plugin guest template (adoption)
 - [x] Packaging: Windows, macOS, Linux native builds (release profile + 3-OS release workflow + `docs/PACKAGING.md`)
-- [x] Optional: wasm32 build of `armature-gui` for browser demo (`WebRunner` path + `just build-wasm-gui`)
-- [x] Sample binary corpus for manual QA (PE/ELF/Mach-O, x86/ARM): `examples/samples` + `just build-samples`/`qa`
+- [x] Optional: wasm32 build of `tpt-armature-gui` for browser demo (`WebRunner` path + `just build-wasm-gui`)
+- [x] Sample binary corpus for manual QA (PE/ELF/Mach-O, x86/ARM): `examples/tpt-armature-sample` + `just build-samples`/`qa`
 
 ## Phase 7 — Analysis depth (done)
 
-- [x] Recursive-descent function recovery (`armature-ir::recover_functions`): split
+- [x] Recursive-descent function recovery (`tpt-armature-ir::recover_functions`): split
       the code section into functions from entry point, exports, and call targets,
       with a linear-sweep fallback for full coverage.
 - [x] `build_cfg` now spans all recovered functions (combined CFG).
@@ -126,7 +126,7 @@ features, innovation ideas, and adoption blockers.
        cross-function edges; ignores `blocks`/`addr_to_idx`). Restrict to in-
        function edges, exclude `Call`, or do dominator-based back-edge detection.
 - [x] Cache the per-function CFG in the GUI instead of rebuilding it every frame
-       (`armature-gui/src/app.rs` `render_graph` calls `build_cfg` + BFS layout on
+       (`tpt-armature-gui/src/app.rs` `render_graph` calls `build_cfg` + BFS layout on
        each `update()`). Rebuild only on function-selection change.
 - [x] Offload analysis off the GUI UI thread (`app.rs` `load()` runs
        `analyze_binary` synchronously and freezes the window on large binaries).
@@ -150,21 +150,21 @@ features, innovation ideas, and adoption blockers.
 
 - [x] Persist/export renames (rename + symbol annotations are in-memory only;
        add JSON/CSV/idc export and `analyze --json` for automation/CI).
-- [ ] GUI goto-address, search, and keyboard navigation (only click nav exists).
-- [ ] String and constant extraction pass.
-- [ ] Debug-info import (PDB/DWARF) in `armature-formats` (currently only
+- [x] GUI goto-address, search, and keyboard navigation (only click nav exists).
+- [x] String and constant extraction pass.
+- [x] Debug-info import (PDB/DWARF) in `armature-formats` (currently only
       container symbols).
-- [ ] Plugin auto-discovery / directory loading for Wasm plugins.
-- [ ] Prebuilt-binary download link in README/PACKAGING (release artifacts).
+- [x] Plugin auto-discovery / directory loading for Wasm plugins.
+- [x] Prebuilt-binary download link in README/PACKAGING (release artifacts).
 
 ### Adoption blockers (docs / CI / CLI)
 
-- [x] Add a `plugin`/`wasm` CLI subcommand and enable `armature-ext/wasm` on
-       `armature-cli` so the documented Wasm plugin ABI is actually runnable.
+- [x] Add a `plugin`/`wasm` CLI subcommand and enable `tpt-armature-ext/wasm` on
+       `tpt-armature-cli` so the documented Wasm plugin ABI is actually runnable.
 - [x] CI: add a `--all-features` build + clippy job and a `cargo test` job
        (currently only default features are built/linted; the `rhai` quick-start,
        ARM, Wasm, and GUI code are never verified).
-- [x] Fix README feature-flag table: `-p armature-cli --features arm/wasm`
+- [x] Fix README feature-flag table: `-p tpt-armature-cli --features arm/wasm`
        fails (cli only exposes `rhai`); align docs or expose those features.
 - [x] Consistent GUI feature naming (`app` vs `scripts`) across README,
        PACKAGING, justfile, and `just build-wasm-gui`.
@@ -173,16 +173,62 @@ features, innovation ideas, and adoption blockers.
 ### Adoption — examples & templates
 
 - [x] `just` recipe to build + run the `hello` Wasm plugin end-to-end.
-- [ ] "5-minute quickstart" doc with a screenshot and expected `analyze` output
-       using `examples/samples`.
-- [ ] `templates/` area: "first analysis" Rhai cheat-sheet + a minimal annotated
-       sample binary.
-- [x] GUI "Open Sample" button that auto-loads `examples/samples`.
+- [x] "5-minute quickstart" doc with a screenshot and expected `analyze` output
+      using `examples/samples`.
+- [x] `templates/` area: "first analysis" Rhai cheat-sheet + a minimal annotated
+      sample binary.
+- [x] GUI "Open Sample" button that auto-loads `examples/tpt-armature-sample`.
 
 ### Innovation (nice-to-have, differentiators)
 
-- [ ] Pseudocode / decompiler view (IR -> C-like).
-- [ ] Bindiff-style binary diffing between two builds.
-- [ ] `armature watch` to re-analyze on rebuild.
+- [x] Pseudocode / decompiler view (IR -> C-like).
+- [x] Bindiff-style binary diffing between two builds.
+- [x] `armature watch` to re-analyze on rebuild.
 - [ ] `armature serve` headless web UI.
 - [ ] Shared script/template marketplace repo.
+
+## Phase 9 — Platform review implementation (from `plan` review)
+
+Bugs / correctness surfaced in the review, plus the two unchecked Phase 8 backlog
+items, missing-feature P0s, and adoption/usability work.
+
+### Bugs (correctness) — implement
+
+- [ ] B1: ARM/AArch64 analysis is dead — `yaxpeax_arm.rs` emits every instruction as
+       `Mnemonic::Other` with empty operands and a fixed `size: 4`. Classify real
+       mnemonics (`Jmp`/`Jcc`/`Call`/`Ret`/arithmetic/`Nop`), extract branch-target
+       immediates (relative to the instruction) so CFG/function recovery work, and
+       populate at least the destination register for data-flow. Add ARM unit tests.
+- [ ] B2: combined-CFG `loop_count` inflation — `build_cfg` merges all functions;
+       cross-function tail `jmp`/`call` edges are counted as loops. Skip edges that
+       leave the owning function (pass `func_of` into `count_back_edges`); keep the
+       per-function GUI CFG correct. Add a regression test.
+- [ ] B3 (track): indirect control flow (`call rax`, `jmp [table]`, PLT/GOT) is not
+       followed; document the limitation and add best-effort resolution later.
+- [ ] B4: `analyze --json` never carries renames — add `--rename-file` (json/csv) so
+       renames round-trip into `analyze` output and relabel functions.
+
+### Missing features (P0)
+
+- [ ] DWARF debug-info import (feature `debuginfo`): currently only PDB + inline ELF
+       `.symtab`. Parse DWARF subprogram names/addresses from ELF and flow them into
+       `function.name` (guarded so parse never fails on missing DWARF).
+- [ ] Interactive rename/comment import in the GUI (load a rename file) to match the
+       existing export paths.
+
+### Innovation / backlog (unchecked Phase 8)
+
+- [ ] `armature serve` — headless web UI serving analysis over HTTP (feature `serve`).
+- [ ] Shared script/template marketplace repo (recipe gallery + plugin registry).
+
+### Usability & automation
+
+- [ ] `just setup` recipe (add `wasm32-unknown-unknown` target, install git hooks).
+- [ ] Clearer feature-missing errors: keep `--pdb`/`--rename-file` present and return a
+       "built without the `debuginfo` feature" message instead of "unexpected argument".
+- [ ] README: note the browser-demo (`build-wasm-gui`) and a recipe-gallery doc.
+
+### Validation
+
+- [ ] `cargo test --workspace --all-features` green; new ARM + CFG regression tests pass.
+- [ ] `analyze --rename-file` round-trip verified.

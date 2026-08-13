@@ -30,8 +30,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build docs
         run: cargo doc --workspace --no-deps --document-private-items
-  - name: Smoke test (analyze self)
-    run: cargo run -p armature-cli -- analyze target/debug/armature
+      - name: Smoke test (analyze self)
+        run: cargo run -p tpt-armature-cli -- analyze target/debug/tpt-armature
 
   # Heavier job that exercises the feature-gated code paths (ARM backend, Rhai
   # scripting, Wasm plugins, and the egui GUI) which the default build never

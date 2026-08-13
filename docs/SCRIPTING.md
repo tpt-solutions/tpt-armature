@@ -7,14 +7,14 @@ loaded `Analysis` and can propose symbol renames.
 ## Running a script
 
 ```sh
-cargo run -p armature-cli --features rhai -- script <binary> <script.rhai>
+cargo run -p tpt-armature-cli --features rhai -- script <binary> <script.rhai>
 ```
 
-Example (ships in `crates/armature-ext/scripts/`):
+Example (ships in `crates/tpt-armature-ext/scripts/`):
 
 ```sh
-cargo run -p armature-cli --features rhai -- script target/debug/armature \
-    crates/armature-ext/scripts/auto_rename_printf.rhai
+cargo run -p tpt-armature-cli --features rhai -- script target/debug/tpt-armature \
+    crates/tpt-armature-ext/scripts/auto_rename_printf.rhai
 ```
 
 The CLI prints every rename the script produced as `0x<addr> -> <name>`.
@@ -51,8 +51,8 @@ The CLI prints every rename the script produced as `0x<addr> -> <name>`.
 
 ## Wasm plugins (heavier duty)
 
-For sandboxed, language-agnostic plugins, implement the `armature` ABI
+For sandboxed, language-agnostic plugins, implement the `tpt-armature` ABI
 (`log`, `get_instruction_count`, `rename`) and compile to
 `wasm32-unknown-unknown`. See
-`crates/armature-ext/examples/plugins/hello` for a working guest and the
+`crates/tpt-armature-ext/examples/plugins/tpt-armature-hello-plugin` for a working guest and the
 `just build-wasm-example` recipe.

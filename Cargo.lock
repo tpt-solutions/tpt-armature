@@ -257,83 +257,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "armature-analysis"
-version = "0.1.0"
-dependencies = [
- "armature-disasm",
- "armature-formats",
- "armature-ir",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "armature-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "armature-analysis",
- "armature-disasm",
- "armature-ext",
- "armature-formats",
- "armature-ir",
- "clap",
-]
-
-[[package]]
-name = "armature-disasm"
-version = "0.1.0"
-dependencies = [
- "armature-formats",
- "armature-ir",
- "iced-x86",
- "thiserror 1.0.69",
- "yaxpeax-arch",
- "yaxpeax-arm",
-]
-
-[[package]]
-name = "armature-ext"
-version = "0.1.0"
-dependencies = [
- "armature-analysis",
- "armature-formats",
- "armature-ir",
- "rhai",
- "thiserror 1.0.69",
- "wasmtime",
-]
-
-[[package]]
-name = "armature-formats"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "goblin",
- "pdb",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "armature-gui"
-version = "0.1.0"
-dependencies = [
- "armature-analysis",
- "armature-ext",
- "armature-formats",
- "armature-ir",
- "eframe",
- "egui",
- "getrandom 0.3.4",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "armature-ir"
-version = "0.1.0"
-
-[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3967,6 +3890,83 @@ name = "toml_writer"
 version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
+
+[[package]]
+name = "tpt-armature-analysis"
+version = "0.1.0"
+dependencies = [
+ "thiserror 1.0.69",
+ "tpt-armature-disasm",
+ "tpt-armature-formats",
+ "tpt-armature-ir",
+]
+
+[[package]]
+name = "tpt-armature-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "tpt-armature-analysis",
+ "tpt-armature-disasm",
+ "tpt-armature-ext",
+ "tpt-armature-formats",
+ "tpt-armature-ir",
+]
+
+[[package]]
+name = "tpt-armature-disasm"
+version = "0.1.0"
+dependencies = [
+ "iced-x86",
+ "thiserror 1.0.69",
+ "tpt-armature-formats",
+ "tpt-armature-ir",
+ "yaxpeax-arch",
+ "yaxpeax-arm",
+]
+
+[[package]]
+name = "tpt-armature-ext"
+version = "0.1.0"
+dependencies = [
+ "rhai",
+ "thiserror 1.0.69",
+ "tpt-armature-analysis",
+ "tpt-armature-formats",
+ "tpt-armature-ir",
+ "wasmtime",
+]
+
+[[package]]
+name = "tpt-armature-formats"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "goblin",
+ "pdb",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tpt-armature-gui"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "getrandom 0.3.4",
+ "tpt-armature-analysis",
+ "tpt-armature-ext",
+ "tpt-armature-formats",
+ "tpt-armature-ir",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "tpt-armature-ir"
+version = "0.1.0"
 
 [[package]]
 name = "tracing"

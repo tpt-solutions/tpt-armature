@@ -1,0 +1,27 @@
+[package]
+name = "tpt-armature-analysis"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Layer 2 analysis: control-flow graph, data-flow, and cross-reference indexing."
+readme = "README.md"
+keywords = [
+    "reverse-engineering",
+    "binary-analysis",
+    "control-flow-graph",
+    "data-flow",
+    "cross-reference",
+    "decompiler",
+]
+categories = [
+    "development-tools",
+]
+
+[dependencies]
+tpt-armature-ir = { path = "../tpt-armature-ir" }
+tpt-armature-formats = { path = "../tpt-armature-formats" }
+tpt-armature-disasm = { path = "../tpt-armature-disasm" }
+thiserror.workspace = true

@@ -1,0 +1,34 @@
+[package]
+name = "tpt-armature-disasm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Layer 2 disassembly backends (iced-x86/x64, yaxpeax ARM) lowered into tpt-armature-ir."
+readme = "README.md"
+keywords = [
+    "reverse-engineering",
+    "binary-analysis",
+    "disassembly",
+    "x86-64",
+    "arm",
+    "aarch64",
+]
+categories = [
+    "development-tools",
+    "parser-implementations",
+]
+
+[dependencies]
+tpt-armature-ir = { path = "../tpt-armature-ir" }
+tpt-armature-formats = { path = "../tpt-armature-formats" }
+iced-x86 = "1.21"
+thiserror.workspace = true
+yaxpeax-arch = { version = "0.3", optional = true }
+yaxpeax-arm = { version = "0.4", optional = true }
+
+[features]
+default = []
+arm = ["dep:yaxpeax-arch", "dep:yaxpeax-arm", "tpt-armature-formats/arm"]

@@ -34,18 +34,18 @@ jobs:
             libwayland-dev libfontconfig1-dev libssl-dev
 
       - name: Build CLI (release)
-        run: cargo build --release -p armature-cli --features rhai
+        run: cargo build --release -p tpt-armature-cli --features rhai
 
       - name: Build GUI (release, scripts feature)
-        run: cargo build --release -p armature-gui --features scripts
+        run: cargo build --release -p tpt-armature-gui --features scripts
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: armature-${{ matrix.os }}
           path: |
-            target/release/armature
-            target/release/armature.exe
-            target/release/armature-gui
-            target/release/armature-gui.exe
+            target/release/tpt-armature
+            target/release/tpt-armature.exe
+            target/release/tpt-armature-gui
+            target/release/tpt-armature-gui.exe
           if-no-files-found: ignore

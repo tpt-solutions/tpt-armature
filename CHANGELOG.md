@@ -6,13 +6,13 @@ All notable changes to TPT Armature are documented here.
 
 ### Added
 - Workspace scaffolding (Phase 0): dual MIT/Apache-2.0 license, CI, lint, format.
-- `armature-formats`: PE/ELF/Mach-O parsing, architecture detection, `MemoryMap`.
-- `armature-ir`: custom IR types and builder API.
-- `armature-disasm`: iced-x86/x64 backend, yaxpeax ARM backend (feature `arm`).
-- `armature-analysis`: control-flow graph, data-flow, cross-reference index.
-- `armature-cli`: end-to-end headless pipeline driver with `analyze`, `disasm`,
+- `tpt-armature-formats`: PE/ELF/Mach-O parsing, architecture detection, `MemoryMap`.
+- `tpt-armature-ir`: custom IR types and builder API.
+- `tpt-armature-disasm`: iced-x86/x64 backend, yaxpeax ARM backend (feature `arm`).
+- `tpt-armature-analysis`: control-flow graph, data-flow, cross-reference index.
+- `tpt-armature-cli`: end-to-end headless pipeline driver with `analyze`, `disasm`,
   `cfg`, and `script` (feature `rhai`) subcommands.
-- Recursive-descent **function recovery** (`armature-ir::recover_functions`): the
+- Recursive-descent **function recovery** (`tpt-armature-ir::recover_functions`): the
   code section is now split into proper functions from the entry point, exported
   symbols, and discovered call targets, with a linear-sweep fallback so no code
   is lost. Replaces the previous single linear-sweep function.
@@ -26,8 +26,8 @@ All notable changes to TPT Armature are documented here.
   now draw arrowheads.
 - CLI `cfg` caps its edge dump at 200 lines (with an overflow notice) so it no
   longer prints the full ~167k-edge graph.
-- `armature-gui`: panel layout + egui application (feature `app`).
-- `armature-ext`: Rhai scripting host (feature `rhai`) and wasmtime plugin host
+- `tpt-armature-gui`: panel layout + egui application (feature `app`).
+- `tpt-armature-ext`: Rhai scripting host (feature `rhai`) and wasmtime plugin host
   (feature `wasm`) whose `rename` ABI now records renames.
 - Rhai script templates (`scripts/`) and a Wasm plugin guest template
   (`examples/plugins/hello`).
