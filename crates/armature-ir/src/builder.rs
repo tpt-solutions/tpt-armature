@@ -151,8 +151,7 @@ pub fn recover_functions(instructions: &[Instruction], entries: &[u64]) -> Vec<F
         return Vec::new();
     }
 
-    let by_addr: HashMap<u64, &Instruction> =
-        instructions.iter().map(|i| (i.address, i)).collect();
+    let by_addr: HashMap<u64, &Instruction> = instructions.iter().map(|i| (i.address, i)).collect();
     let mut assigned: HashSet<u64> = HashSet::new();
     let mut functions: Vec<Function> = Vec::new();
     let mut pending: Vec<u64> = entries.to_vec();

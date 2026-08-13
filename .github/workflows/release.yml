@@ -1,0 +1,51 @@
+# Release packaging for TPT Armature.
+# Builds the native CLI (and desktop GUI) on Windows / macOS / Linux and uploads
+# the stripped binaries as artifacts.
+
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux GUI system libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxkbcommon-dev \
+            libwayland-dev libfontconfig1-dev libssl-dev
+
+      - name: Build CLI (release)
+        run: cargo build --release -p armature-cli --features rhai
+
+      - name: Build GUI (release, scripts feature)
+        run: cargo build --release -p armature-gui --features scripts
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: armature-${{ matrix.os }}
+          path: |
+            target/release/armature
+            target/release/armature.exe
+            target/release/armature-gui
+            target/release/armature-gui.exe
+          if-no-files-found: ignore

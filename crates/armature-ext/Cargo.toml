@@ -14,7 +14,7 @@ armature-ir = { path = "../armature-ir" }
 armature-analysis = { path = "../armature-analysis" }
 thiserror.workspace = true
 rhai = { version = "1", optional = true }
-wasmtime = { version = "25", optional = true }
+wasmtime = { version = "47", optional = true }
 
 [features]
 default = []

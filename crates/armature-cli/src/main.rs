@@ -151,7 +151,10 @@ fn cmd_cfg(path: PathBuf) -> anyhow::Result<()> {
         );
     }
     if analysis.cfg.edges.len() > CAP {
-        println!("  ... {} more edge(s) not shown", analysis.cfg.edges.len() - CAP);
+        println!(
+            "  ... {} more edge(s) not shown",
+            analysis.cfg.edges.len() - CAP
+        );
     }
     Ok(())
 }

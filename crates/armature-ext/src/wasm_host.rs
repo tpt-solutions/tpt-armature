@@ -82,9 +82,12 @@ impl PluginHost {
                         let end = start + len.max(0) as usize;
                         let mut buf = vec![0u8; end.saturating_sub(start).max(1)];
                         if mem.read(&caller, start, &mut buf).is_ok() {
-                            caller.data().log.lock().unwrap().push(
-                                String::from_utf8_lossy(&buf).to_string(),
-                            );
+                            caller
+                                .data()
+                                .log
+                                .lock()
+                                .unwrap()
+                                .push(String::from_utf8_lossy(&buf).to_string());
                         }
                     }
                 },

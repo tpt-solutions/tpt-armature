@@ -17,6 +17,7 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
     "Zlib",
     "MPL-2.0",
     "CC0-1.0",
@@ -24,10 +25,8 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
-version = 1
 multiple-versions = "allow"
 wildcards = "allow"
 
 [sources]
-version = 2
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]

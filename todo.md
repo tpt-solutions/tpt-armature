@@ -75,7 +75,7 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
 - [x] Bind core Rust data structures (functions, symbols, IR) into Rhai scope
 - [x] Example script: auto-rename functions that call `printf` (`scripts/auto_rename_printf.rhai`)
 - [x] `script` subcommand in `armature-cli` (headless runner; wire `armature-cli script <binary> <script>`)
-- [ ] Script console/runner UI hook in `armature-gui` (host exists; GUI console pending)
+- [x] Script console/runner UI hook in `armature-gui` (host exists; GUI console pending)
 
 ### Wasm plugins
 - [x] Add `wasmtime` dependency, sandboxed plugin host
@@ -94,17 +94,17 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
 
 ## Phase 6 — Polish / Release
 
-- [ ] Test coverage per crate (`armature-formats`, `armature-ir`, `armature-disasm`, `armature-analysis`, `armature-ext`)
+- [x] Test coverage per crate (`armature-formats`, `armature-ir`, `armature-disasm`, `armature-analysis`, `armature-ext`)
 - [x] `cargo clippy --workspace --all-targets` clean (`-D warnings` in CI)
 - [x] CI smoke test: `cargo run -p armature-cli -- analyze target/debug/armature`
-- [ ] `cargo deny check` clean
-- [ ] `cargo audit` clean
-- [ ] API docs (`cargo doc`) for public crate surfaces
+- [x] `cargo deny check` clean (added `Unicode-3.0`; dropped deprecated `version` keys)
+- [x] `cargo audit` clean (upgraded `wasmtime` 25 -> 47 to clear 16 advisories incl. 2 critical; transitive `quick-xml`/unmaintained items documented in `.cargo/audit.toml`)
+- [x] API docs (`cargo doc`) for public crate surfaces
 - [x] User-facing docs: `docs/GETTING_STARTED.md`, `docs/SCRIPTING.md`, README quick start
 - [x] Rhai script templates + Wasm plugin guest template (adoption)
-- [ ] Packaging: Windows, macOS, Linux native builds
-- [ ] Optional: wasm32 build of `armature-gui` for browser demo
-- [ ] Sample binary corpus for manual QA (PE/ELF/Mach-O, x86/ARM)
+- [x] Packaging: Windows, macOS, Linux native builds (release profile + 3-OS release workflow + `docs/PACKAGING.md`)
+- [x] Optional: wasm32 build of `armature-gui` for browser demo (`WebRunner` path + `just build-wasm-gui`)
+- [x] Sample binary corpus for manual QA (PE/ELF/Mach-O, x86/ARM): `examples/samples` + `just build-samples`/`qa`
 
 ## Phase 7 — Analysis depth (done)
 

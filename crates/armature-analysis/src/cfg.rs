@@ -47,7 +47,8 @@ pub struct Cfg {
     pub nodes: Vec<BasicBlock>,
     /// Directed edges.
     pub edges: Vec<Edge>,
-    /// Count of back-edges (loops), filled by [`Cfg::detect_loops`].
+    /// Count of back-edges (loops), computed during construction by the
+    /// back-edge analysis over [`Cfg::edges`].
     pub loop_count: usize,
 }
 
@@ -241,16 +242,14 @@ mod tests {
         // 0x208: jne 0x200      (block 1 self-loop)
         // 0x20c: jmp 0x100      (block 1 -> block 0 : back-edge / loop)
         // 0x300: ret            (block 2)
-        let mut blocks = vec![
-            block(
-                0,
-                0x100,
-                vec![
-                    ins(0x100, Mnemonic::Mov, vec![]),
-                    ins(0x104, Mnemonic::Jmp, vec![Operand::Imm(0x200)]),
-                ],
-            ),
-        ];
+        let mut blocks = vec![block(
+            0,
+            0x100,
+            vec![
+                ins(0x100, Mnemonic::Mov, vec![]),
+                ins(0x104, Mnemonic::Jmp, vec![Operand::Imm(0x200)]),
+            ],
+        )];
         blocks.push(block(
             1,
             0x200,

@@ -12,6 +12,7 @@ description = "Layer 3 presentation: hex / assembly / graph views (egui)."
 armature-formats = { path = "../armature-formats" }
 armature-ir = { path = "../armature-ir" }
 armature-analysis = { path = "../armature-analysis" }
+armature-ext = { path = "../armature-ext", optional = true }
 egui = { version = "0.29", optional = true }
 eframe = { version = "0.29", optional = true }
 
@@ -20,6 +21,17 @@ default = []
 # The native/desktop application. (The production target is tpt-appfront, which
 # is itself built on egui; this crate uses egui directly so it builds standalone.)
 app = ["dep:egui", "dep:eframe"]
+# The in-app Rhai script console / runner. Builds on `app` and the embedded
+# scripting host from `armature-ext`.
+scripts = ["app", "dep:armature-ext", "armature-ext/rhai"]
+
+# eframe's web (wasm32) backend pulls in `getrandom`, which on wasm32-unknown-unknown
+# requires its `wasm_js` cfg to be enabled. This only affects the wasm32 target.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["HtmlCanvasElement", "console"] }
 
 [[bin]]
 name = "armature-gui"

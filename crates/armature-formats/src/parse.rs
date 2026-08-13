@@ -74,11 +74,7 @@ fn parse_elf(elf: goblin::elf::Elf<'_>, bytes: &[u8], map: &mut MemoryMap) -> Re
     map.arch = arch::from_elf_machine(elf.header.e_machine);
 
     for sh in &elf.section_headers {
-        let name = elf
-            .shdr_strtab
-            .get_at(sh.sh_name)
-            .unwrap_or("")
-            .to_string();
+        let name = elf.shdr_strtab.get_at(sh.sh_name).unwrap_or("").to_string();
         let range = match sh.file_range() {
             Some(r) if r.end <= bytes.len() => r,
             _ => continue,

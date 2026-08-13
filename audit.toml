@@ -1,5 +1,0 @@
-# cargo-audit configuration.
-# Mirrors the security posture of sibling tpt-* repositories.
-
-[audit]
-ignore = []

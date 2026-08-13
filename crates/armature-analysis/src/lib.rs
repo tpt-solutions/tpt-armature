@@ -1,8 +1,9 @@
 //! Layer 2 — Analysis ("Exposing the Framework").
 //!
 //! Consumes the IR produced by [`armature_disasm`] and builds the mathematical
-//! structures analysts use: a control-flow graph ([`cfg`]), a cross-reference
-//! index ([`xref`]), and a lightweight data-flow summary ([`dataflow`]).
+//! structures analysts use: a control-flow graph ([`crate::cfg`]), a
+//! cross-reference index ([`crate::xref`]), and a lightweight data-flow summary
+//! ([`crate::dataflow`]).
 
 pub mod cfg;
 pub mod dataflow;

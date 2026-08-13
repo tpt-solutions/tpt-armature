@@ -6,10 +6,13 @@
 //! itself built on egui.
 
 use armature_analysis::{Analysis, XrefKind};
-use armature_ir::{Module, Mnemonic, Operand};
+use armature_ir::{Mnemonic, Module, Operand};
 use eframe::egui;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
+
+#[cfg(feature = "scripts")]
+use armature_ext::{default_rename_script, ScriptHost};
 
 /// Maximum basic blocks drawn in the graph view (huge functions are capped).
 const GRAPH_NODE_CAP: usize = 600;
@@ -18,14 +21,43 @@ const NODE_H: f32 = 46.0;
 const GAP_X: f32 = 70.0;
 const GAP_Y: f32 = 26.0;
 
-/// Run the native egui application.
+/// Run the egui application. On native targets this opens an OS window; on
+/// `wasm32` it mounts into the `#armature_canvas` HTML canvas element.
 pub fn run() -> eframe::Result<()> {
-    let options = eframe::NativeOptions::default();
-    eframe::run_native(
-        "TPT Armature",
-        options,
-        Box::new(|_cc| Ok(Box::new(ArmatureApp::new()))),
-    )
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+        let canvas = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.get_element_by_id("armature_canvas"))
+            .and_then(|e| e.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+            .expect("missing #armature_canvas element");
+        let web_options = eframe::WebOptions::default();
+        let runner = eframe::WebRunner::new();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Err(e) = runner
+                .start(
+                    canvas,
+                    web_options,
+                    Box::new(|_cc| Ok(Box::new(ArmatureApp::new()))),
+                )
+                .await
+            {
+                let msg = format!("armature gui failed to start: {e:?}");
+                web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(&msg));
+            }
+        });
+        Ok(())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let options = eframe::NativeOptions::default();
+        eframe::run_native(
+            "TPT Armature",
+            options,
+            Box::new(|_cc| Ok(Box::new(ArmatureApp::new()))),
+        )
+    }
 }
 
 struct ArmatureApp {
@@ -38,6 +70,14 @@ struct ArmatureApp {
     /// When `Some`, the Assembly view should scroll to this index (set by
     /// graph-node / X-ref jumps) and then clear it.
     pending_scroll: Option<usize>,
+    /// Script console source text (Rhai). Only populated when the `scripts`
+    /// feature is enabled.
+    #[cfg(feature = "scripts")]
+    script_source: String,
+    /// Script console output (renames + errors). Only populated when the
+    /// `scripts` feature is enabled.
+    #[cfg(feature = "scripts")]
+    script_output: String,
 }
 
 impl ArmatureApp {
@@ -49,6 +89,10 @@ impl ArmatureApp {
             selected_function: 0,
             addr_to_idx: HashMap::new(),
             pending_scroll: None,
+            #[cfg(feature = "scripts")]
+            script_source: default_rename_script().to_string(),
+            #[cfg(feature = "scripts")]
+            script_output: String::new(),
         };
         if let Some(path) = std::env::args().nth(1) {
             app.load(PathBuf::from(path));
@@ -116,6 +160,83 @@ impl eframe::App for ArmatureApp {
                 ui.label(&self.status);
             }
         });
+
+        #[cfg(feature = "scripts")]
+        self.render_script_console(ctx);
+    }
+}
+
+#[cfg(feature = "scripts")]
+impl ArmatureApp {
+    /// Bottom-docked Rhai script console: edit a script, run it against the
+    /// loaded analysis, and see the renames it produced (which are also applied
+    /// to the function labels in the Graph view).
+    fn render_script_console(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::bottom("script_console")
+            .resizable(true)
+            .default_height(160.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Script");
+                    if ui.button("Run").clicked() {
+                        self.run_script();
+                    }
+                    if ui.button("Reset").clicked() {
+                        self.script_source = default_rename_script().to_string();
+                        self.script_output.clear();
+                    }
+                });
+                ui.separator();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.script_source)
+                            .code_editor()
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(6),
+                    );
+                });
+                if !self.script_output.is_empty() {
+                    ui.separator();
+                    ui.label(&self.script_output);
+                }
+            });
+    }
+
+    /// Execute the current `script_source` against the loaded analysis. Renames
+    /// are recorded to `script_output` and applied to the matching functions so
+    /// they surface in the Graph view's node labels.
+    #[cfg(feature = "scripts")]
+    fn run_script(&mut self) {
+        let Some(analysis) = self.analysis.as_ref() else {
+            self.script_output = "no binary loaded".to_string();
+            return;
+        };
+        let host = ScriptHost::new(analysis);
+        match host.run(&self.script_source) {
+            Ok(renames) => {
+                if let Some(analysis) = self.analysis.as_mut() {
+                    for func in analysis.module.functions.iter_mut() {
+                        if let Some(name) = renames.get(&func.start) {
+                            func.name = Some(name.clone());
+                        }
+                    }
+                }
+                if renames.is_empty() {
+                    self.script_output = "script produced no renames".to_string();
+                } else {
+                    let mut entries: Vec<_> = renames.iter().collect();
+                    entries.sort_by_key(|(addr, _)| **addr);
+                    let mut out = String::from("renames:\n");
+                    for (addr, name) in entries {
+                        out.push_str(&format!("  0x{addr:x} -> {name}\n"));
+                    }
+                    self.script_output = out;
+                }
+            }
+            Err(e) => {
+                self.script_output = format!("script error: {e}");
+            }
+        }
     }
 }
 
@@ -163,12 +284,17 @@ fn render_asm(
                 }
             }
         }
-        if matches!(ins.mnemonic, Mnemonic::Call | Mnemonic::Jmp | Mnemonic::Jcc(_)) {
-            if let Some(target) = ins
-                .operands
-                .iter()
-                .find_map(|o| if let Operand::Imm(v) = o { Some(*v) } else { None })
-            {
+        if matches!(
+            ins.mnemonic,
+            Mnemonic::Call | Mnemonic::Jmp | Mnemonic::Jcc(_)
+        ) {
+            if let Some(target) = ins.operands.iter().find_map(|o| {
+                if let Operand::Imm(v) = o {
+                    Some(*v)
+                } else {
+                    None
+                }
+            }) {
                 if let Some(&idx) = addr_to_idx.get(&target) {
                     let label = format!("  -> 0x{:08x}", target);
                     if ui.selectable_label(false, label).clicked() {
@@ -213,10 +339,7 @@ fn render_graph(
 
     egui::ComboBox::from_label("Function").show_ui(ui, |ui| {
         for (i, f) in funcs.iter().enumerate() {
-            let label = f
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("0x{:x}", f.start));
+            let label = f.name.clone().unwrap_or_else(|| format!("0x{:x}", f.start));
             ui.selectable_value(selected_function, i, label);
         }
     });
@@ -236,7 +359,14 @@ fn render_graph(
     ));
 
     let selected_addr = analysis.instructions.get(*selected).map(|i| i.address);
-    draw_cfg_canvas(ui, &cfg, addr_to_idx, selected_addr, selected);
+    draw_cfg_canvas(
+        ui,
+        &cfg,
+        addr_to_idx,
+        selected_addr,
+        selected,
+        pending_scroll,
+    );
 }
 
 /// Draw one function's CFG as a layered node-and-edge canvas (not the raw edge
@@ -249,6 +379,7 @@ fn draw_cfg_canvas(
     addr_to_idx: &HashMap<u64, usize>,
     selected_addr: Option<u64>,
     selected: &mut usize,
+    pending_scroll: &mut Option<usize>,
 ) {
     let n = cfg.nodes.len();
     if n == 0 {
@@ -357,10 +488,15 @@ fn draw_cfg_canvas(
                 egui::Color32::WHITE,
             );
 
-            let resp = ui.interact(nrect, egui::Id::new(("graph_node", i)), egui::Sense::click());
+            let resp = ui.interact(
+                nrect,
+                egui::Id::new(("graph_node", i)),
+                egui::Sense::click(),
+            );
             if resp.clicked() {
                 if let Some(&idx) = addr_to_idx.get(&cfg.nodes[i].start) {
                     *selected = idx;
+                    *pending_scroll = Some(idx);
                 }
             }
         }
@@ -372,12 +508,7 @@ fn draw_cfg_canvas(
 }
 
 /// Draw a small arrowhead at `to` pointing along the `from`->`to` direction.
-fn draw_arrowhead(
-    painter: &egui::Painter,
-    from: egui::Pos2,
-    to: egui::Pos2,
-    stroke: egui::Stroke,
-) {
+fn draw_arrowhead(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: egui::Stroke) {
     let dir = to - from;
     let len = dir.length();
     if len <= 1.0 {

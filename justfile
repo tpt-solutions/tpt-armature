@@ -52,3 +52,19 @@ script SCRIPT="crates/armature-ext/scripts/summary.rhai":
 build-wasm-example:
     cargo build --release --target wasm32-unknown-unknown \
         --manifest-path crates/armature-ext/examples/plugins/hello/Cargo.toml
+
+# Build the GUI for the browser (wasm32). Mounts into the #armature_canvas element.
+build-wasm-gui:
+    rustup target add wasm32-unknown-unknown
+    cargo build --release --target wasm32-unknown-unknown -p armature-gui --features scripts
+
+# Build the manual-QA sample binary for the host platform (see examples/samples).
+build-samples:
+    cargo build --release --manifest-path examples/samples/Cargo.toml
+
+# Quick manual-QA pass: analyze the sample binary end-to-end.
+qa:
+    just build-samples
+    $bin = if ($IsWindows) { "examples/samples/target/release/armature-sample.exe" } else { "examples/samples/target/release/armature-sample" }
+    cargo run -p armature-cli -- analyze $bin
+    cargo run -p armature-cli -- disasm $bin -n 12
