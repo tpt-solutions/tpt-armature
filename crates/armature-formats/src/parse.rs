@@ -2,7 +2,9 @@
 
 use crate::arch::{self, Architecture};
 use crate::error::{FormatError, Result};
-use crate::map::{BinaryFormat, DebugSymbol, DebugSymbolKind, Export, Import, MemoryMap, Section};
+use crate::map::{BinaryFormat, Export, Import, MemoryMap, Section};
+#[cfg(feature = "debuginfo")]
+use crate::map::{DebugSymbol, DebugSymbolKind};
 
 /// Parse a raw binary blob into a standardized [`MemoryMap`].
 ///

@@ -171,11 +171,19 @@ fn load(path: PathBuf) -> anyhow::Result<Vec<u8>> {
 fn cmd_analyze(path: PathBuf, limit: usize, json: bool, pdb: Option<PathBuf>) -> anyhow::Result<()> {
     let bytes = load(path)?;
     let analysis = if let Some(pdb_path) = pdb {
-        let pdb_bytes = std::fs::read(&pdb_path)
-            .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", pdb_path.display()))?;
-        let map = armature_formats::debuginfo::parse_with_pdb(&bytes, &pdb_bytes)
-            .map_err(|e| anyhow::anyhow!("debug-info import failed: {e}"))?;
-        armature_analysis::analyze_map(map)?
+        #[cfg(feature = "debuginfo")]
+        {
+            let pdb_bytes = std::fs::read(&pdb_path)
+                .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", pdb_path.display()))?;
+            let map = armature_formats::debuginfo::parse_with_pdb(&bytes, &pdb_bytes)
+                .map_err(|e| anyhow::anyhow!("debug-info import failed: {e}"))?;
+            armature_analysis::analyze_map(map)?
+        }
+        #[cfg(not(feature = "debuginfo"))]
+        {
+            let _ = pdb_path;
+            armature_analysis::analyze_binary(&bytes)?
+        }
     } else {
         armature_analysis::analyze_binary(&bytes)?
     };

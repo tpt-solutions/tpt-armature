@@ -151,7 +151,12 @@ fn b_str(ops: &[Operand]) -> String {
 }
 
 fn operand_str(op: &Operand) -> String {
-    op.to_string()
+    match op {
+        // Immediates read better as decimal in pseudocode (addresses/calls use
+        // their own hex rendering via block labels).
+        Operand::Imm(v) => format!("{v}"),
+        _ => op.to_string(),
+    }
 }
 
 fn block_label(addr: u64) -> String {
