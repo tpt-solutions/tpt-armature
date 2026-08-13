@@ -9,7 +9,10 @@ pub mod error;
 pub mod map;
 pub mod parse;
 
+#[cfg(feature = "debuginfo")]
+pub mod debuginfo;
+
 pub use arch::Architecture;
 pub use error::{FormatError, Result};
-pub use map::{BinaryFormat, Export, Import, MemoryMap, Section};
+pub use map::{BinaryFormat, DebugSymbol, DebugSymbolKind, Export, Import, MemoryMap, Section};
 pub use parse::parse;

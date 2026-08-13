@@ -21,6 +21,9 @@ pub enum FormatError {
     #[error("the binary contains no executable (.text) section to analyze")]
     NoCodeSection,
 
+    #[error("debug-information import failed ({format}): {message}")]
+    DebugInfo { format: &'static str, message: String },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

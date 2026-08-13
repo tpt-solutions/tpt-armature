@@ -18,4 +18,4 @@ yaxpeax-arm = { version = "0.4", optional = true }
 
 [features]
 default = []
-arm = ["dep:yaxpeax-arch", "dep:yaxpeax-arm"]
+arm = ["dep:yaxpeax-arch", "dep:yaxpeax-arm", "armature-formats/arm"]

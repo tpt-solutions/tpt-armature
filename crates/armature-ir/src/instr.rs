@@ -131,7 +131,15 @@ pub struct Instruction {
 }
 
 impl Instruction {
-    /// Registers this instruction defines (written).
+    /// Registers this instruction defines (writes).
+    ///
+    /// Known imprecisions (a conservative alias analysis would be required to
+    /// fix these):
+    /// * Only the *first* operand is inspected, so `mov [rax], rbx` correctly
+    ///   reports no register def (the write is to memory), but a register
+    ///   destination that aliases memory is not modelled.
+    /// * `push`/`pop` do not account for the implicit `rsp` definition/use.
+    /// * Status/flag registers are ignored entirely.
     pub fn defs(&self) -> Vec<String> {
         match &self.mnemonic {
             Mnemonic::Mov
@@ -171,6 +179,9 @@ impl Instruction {
     }
 
     /// Registers this instruction uses (reads).
+    ///
+    /// Memory operands contribute their base/index registers (e.g. `mov [rax], rbx`
+    /// reports both `rax` and `rbx` as used). Flag registers are not modelled.
     pub fn uses(&self) -> Vec<String> {
         self.operands
             .iter()

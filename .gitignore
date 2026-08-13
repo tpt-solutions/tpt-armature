@@ -11,3 +11,6 @@ Thumbs.db
 # Env / local overrides
 .env
 .env.local
+
+# Build / test logs
+*.log

@@ -11,6 +11,17 @@ description = "Layer 1 ingestion: parse PE/ELF/Mach-O into a standardized Memory
 [dependencies]
 goblin.workspace = true
 thiserror.workspace = true
+pdb = { version = "0.8", optional = true }
+
+[features]
+default = []
+# Mirror of `armature-disasm`'s `arm` feature. Enables ARM/AArch64 awareness
+# (notably `Architecture::is_disassemblable`) without pulling in the disassembly
+# backend. `armature-disasm/arm` enables this feature transitively.
+arm = []
+# Debug-information import: ELF `.symtab` recovery (always active under this
+# feature) and PDB public-symbol parsing for PE (via the `pdb` crate).
+debuginfo = ["dep:pdb"]
 
 [dev-dependencies]
 anyhow.workspace = true

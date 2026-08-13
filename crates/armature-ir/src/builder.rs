@@ -237,6 +237,16 @@ fn walk_function(
                     if by_addr.contains_key(&t) {
                         stack.push(t);
                     }
+                    // A resolved direct jump ends the function (no fall-through).
+                    // An *unresolved* terminator (e.g. `jmp [table]`, a tail jump
+                    // to an external thunk) has no known target; keep the
+                    // sequential fall-through open so the function is not
+                    // fragmented by an indirect control transfer.
+                } else {
+                    let fall = addr + ins.size as u64;
+                    if by_addr.contains_key(&fall) {
+                        stack.push(fall);
+                    }
                 }
             }
             Mnemonic::Jcc(_) => {
@@ -425,5 +435,46 @@ mod tests {
         let functions = recover_functions(&instrs, &[0x10]);
         assert_eq!(functions.len(), 2);
         assert!(functions.iter().any(|f| f.start == 0x40));
+    }
+
+    #[test]
+    fn indirect_jmp_keeps_fallthrough() {
+        // 0x100: mov
+        // 0x105: jmp [rax]   (indirect — no immediate target)
+        // 0x10a: ret
+        // The unresolved jump must not terminate the function; fall-through
+        // continues into the `ret`.
+        let instrs = vec![
+            ins(
+                0x100,
+                Mnemonic::Mov,
+                vec![Operand::Reg("rax".into()), Operand::Imm(1)],
+            ),
+            ins(
+                0x105,
+                Mnemonic::Jmp,
+                vec![Operand::Mem {
+                    base: Some("rax".into()),
+                    index: None,
+                    scale: 1,
+                    disp: 0,
+                }],
+            ),
+            ins(0x10a, Mnemonic::Ret, vec![]),
+        ];
+        let functions = recover_functions(&instrs, &[0x100]);
+        assert_eq!(functions.len(), 1);
+        let f = &functions[0];
+        assert_eq!(f.instruction_count(), 3);
+        assert!(
+            f.blocks
+                .last()
+                .unwrap()
+                .instructions
+                .last()
+                .unwrap()
+                .mnemonic
+                == Mnemonic::Ret
+        );
     }
 }

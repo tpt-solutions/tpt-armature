@@ -1,18 +1,26 @@
 //! egui application shell (feature `app`).
 //!
 //! Loads a binary (path supplied as the first CLI argument), runs the analysis
-//! pipeline, and tiles three views: Hex, Assembly, and Graph. This is the
-//! standalone rendering target; the production shell is `tpt-appfront`, which is
-//! itself built on egui.
+//! pipeline on a background thread, and tiles three views: Hex, Assembly, and
+//! Graph. This is the standalone rendering target; the production shell is
+//! `tpt-appfront`, which is itself built on egui.
 
-use armature_analysis::{Analysis, XrefKind};
+use armature_analysis::{Analysis, Cfg, XrefKind};
 use armature_ir::{Mnemonic, Module, Operand};
 use eframe::egui;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
 #[cfg(feature = "scripts")]
 use armature_ext::{default_rename_script, ScriptHost};
+
+/// Which sub-view the right-hand info panel is showing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InfoTab {
+    Strings,
+    Pseudocode,
+}
 
 /// Maximum basic blocks drawn in the graph view (huge functions are capped).
 const GRAPH_NODE_CAP: usize = 600;
@@ -20,6 +28,15 @@ const NODE_W: f32 = 170.0;
 const NODE_H: f32 = 46.0;
 const GAP_X: f32 = 70.0;
 const GAP_Y: f32 = 26.0;
+
+/// Message produced by the background analysis loader.
+enum LoadMsg {
+    Done {
+        analysis: Box<Analysis>,
+        path: PathBuf,
+    },
+    Error(String),
+}
 
 /// Run the egui application. On native targets this opens an OS window; on
 /// `wasm32` it mounts into the `#armature_canvas` HTML canvas element.
@@ -70,6 +87,12 @@ struct ArmatureApp {
     /// When `Some`, the Assembly view should scroll to this index (set by
     /// graph-node / X-ref jumps) and then clear it.
     pending_scroll: Option<usize>,
+    /// Receiver for the background analysis loader. `Some` while a load is in
+    /// flight; `None` once it has completed or errored.
+    load_rx: Option<Receiver<LoadMsg>>,
+    /// Per-function CFG cache, keyed by the selected function index. Rebuilt
+    /// only when the selection changes (not every frame).
+    cached_cfg: Option<(usize, Cfg)>,
     /// Script console source text (Rhai). Only populated when the `scripts`
     /// feature is enabled.
     #[cfg(feature = "scripts")]
@@ -78,6 +101,13 @@ struct ArmatureApp {
     /// `scripts` feature is enabled.
     #[cfg(feature = "scripts")]
     script_output: String,
+    /// Goto-address text box contents (hex or decimal). Enter jumps the
+    /// Assembly view to that instruction.
+    goto_text: String,
+    /// Search box contents; Enter jumps to the next matching instruction.
+    search_text: String,
+    /// Selected right-hand info panel tab.
+    info_tab: InfoTab,
 }
 
 impl ArmatureApp {
@@ -89,50 +119,139 @@ impl ArmatureApp {
             selected_function: 0,
             addr_to_idx: HashMap::new(),
             pending_scroll: None,
+            load_rx: None,
+            cached_cfg: None,
             #[cfg(feature = "scripts")]
             script_source: default_rename_script().to_string(),
             #[cfg(feature = "scripts")]
             script_output: String::new(),
+            goto_text: String::new(),
+            search_text: String::new(),
+            info_tab: InfoTab::Strings,
         };
         if let Some(path) = std::env::args().nth(1) {
-            app.load(PathBuf::from(path));
+            app.start_load(PathBuf::from(path));
         } else {
-            app.status = "No binary supplied. Run: armature-gui <path-to-binary>".to_string();
+            app.status =
+                "No binary supplied. Run: armature-gui <path-to-binary> (or use Open Sample)."
+                    .to_string();
         }
         app
     }
 
-    fn load(&mut self, path: PathBuf) {
-        match std::fs::read(&path) {
-            Ok(bytes) => match armature_analysis::analyze_binary(&bytes) {
-                Ok(analysis) => {
-                    self.addr_to_idx = analysis
-                        .instructions
-                        .iter()
-                        .enumerate()
-                        .map(|(i, ins)| (ins.address, i))
-                        .collect();
-                    self.status = format!(
-                        "{} {} | {} instructions | {} functions | {}",
-                        analysis.map.format,
-                        analysis.map.arch,
-                        analysis.instructions.len(),
-                        analysis.module.functions.len(),
-                        analysis.cfg.summary()
-                    );
-                    self.analysis = Some(analysis);
-                }
-                Err(e) => self.status = format!("analysis failed: {e}"),
-            },
-            Err(e) => self.status = format!("cannot read {}: {e}", path.display()),
+    /// Kick off analysis of `path` on a background thread so the UI never
+    /// freezes, even on large binaries. Results arrive via `self.load_rx`.
+    fn start_load(&mut self, path: PathBuf) {
+        let (tx, rx) = channel();
+        self.load_rx = Some(rx);
+        self.status = format!("loading {} …", path.display());
+        self.analysis = None;
+        self.cached_cfg = None;
+        std::thread::spawn(move || {
+            let result = std::fs::read(&path)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))
+                .and_then(|bytes| {
+                    armature_analysis::analyze_binary(&bytes)
+                        .map_err(|e| format!("analysis failed: {e}"))
+                });
+            let _ = match result {
+                Ok(analysis) => tx.send(LoadMsg::Done {
+                    analysis: Box::new(analysis),
+                    path,
+                }),
+                Err(e) => tx.send(LoadMsg::Error(e)),
+            };
+        });
+    }
+
+    /// Poll the background loader; install the result once it is ready.
+    fn poll_load(&mut self) {
+        if self.load_rx.is_none() {
+            return;
+        }
+        let rx = self.load_rx.take().unwrap();
+        match rx.try_recv() {
+            Ok(LoadMsg::Done { analysis, path }) => {
+                self.addr_to_idx = analysis
+                    .instructions
+                    .iter()
+                    .enumerate()
+                    .map(|(i, ins)| (ins.address, i))
+                    .collect();
+                self.status = format!(
+                    "{} {} | {} instructions | {} functions | {}",
+                    analysis.map.format,
+                    analysis.map.arch,
+                    analysis.instructions.len(),
+                    analysis.module.functions.len(),
+                    analysis.cfg.summary()
+                );
+                let _ = path;
+                self.analysis = Some(*analysis);
+                self.cached_cfg = None;
+            }
+            Ok(LoadMsg::Error(e)) => {
+                self.status = e;
+            }
+            Err(TryRecvError::Empty) => {
+                // Not ready yet; keep polling next frame.
+                self.load_rx = Some(rx);
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.status = "analysis loader disconnected".to_string();
+            }
         }
     }
 }
 
 impl eframe::App for ArmatureApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_load();
+
         egui::TopBottomPanel::top("status").show(ctx, |ui| {
-            ui.label(&self.status);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(&self.status);
+                if ui.button("Open Sample").clicked() {
+                    match sample_path() {
+                        Some(p) => self.start_load(p),
+                        None => {
+                            self.status = "Sample binary not found; run `just build-samples` first."
+                                .to_string()
+                        }
+                    }
+                }
+                ui.separator();
+                ui.label("goto:");
+                let goto_r = ui.text_edit_singleline(&mut self.goto_text);
+                if goto_r.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    let target = self.goto_text.trim().to_string();
+                    self.goto(&target);
+                }
+                ui.label("search:");
+                let search_r = ui.text_edit_singleline(&mut self.search_text);
+                if search_r.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    self.search_next(false);
+                }
+                let editing = goto_r.has_focus() || search_r.has_focus();
+
+                // Keyboard navigation of the Assembly view (only when no text
+                // field is focused, so we don't steal cursor keys from the
+                // goto/search boxes).
+                if !editing {
+                    let mut nav = false;
+                    if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                        self.step_selected(1);
+                        nav = true;
+                    }
+                    if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                        self.step_selected(-1);
+                        nav = true;
+                    }
+                    if nav {
+                        ctx.request_repaint();
+                    }
+                }
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| match &self.analysis {
@@ -150,6 +269,7 @@ impl eframe::App for ArmatureApp {
                         &mut columns[2],
                         analysis,
                         &mut self.selected_function,
+                        &mut self.cached_cfg,
                         &self.addr_to_idx,
                         &mut self.selected,
                         &mut self.pending_scroll,
@@ -161,8 +281,127 @@ impl eframe::App for ArmatureApp {
             }
         });
 
+        self.render_info_panel(ctx);
+
         #[cfg(feature = "scripts")]
         self.render_script_console(ctx);
+    }
+}
+
+impl ArmatureApp {
+    /// Jump the Assembly view to the instruction at (or first one after) `text`,
+    /// which is a hex (`0x…`) or decimal address.
+    fn goto(&mut self, text: &str) {
+        let Some(analysis) = self.analysis.as_ref() else {
+            return;
+        };
+        let Some(addr) = parse_addr_gui(text) else {
+            return;
+        };
+        if let Some(&idx) = self.addr_to_idx.get(&addr) {
+            self.selected = idx;
+            self.pending_scroll = Some(idx);
+        } else if let Some(pos) = analysis.instructions.iter().position(|i| i.address >= addr) {
+            self.selected = pos;
+            self.pending_scroll = Some(pos);
+        }
+    }
+
+    /// Move the Assembly selection by `delta` instructions (clamped).
+    fn step_selected(&mut self, delta: i32) {
+        let Some(analysis) = self.analysis.as_ref() else {
+            return;
+        };
+        let n = analysis.instructions.len();
+        if n == 0 {
+            return;
+        }
+        let cur = self.selected as i32;
+        let next = (cur + delta).clamp(0, (n as i32) - 1);
+        if next != cur {
+            self.selected = next as usize;
+            self.pending_scroll = Some(next as usize);
+        }
+    }
+
+    /// Jump to the next instruction whose text matches [`Self::search_text`]
+    /// (wrapping around the end of the listing).
+    fn search_next(&mut self, _wrap: bool) {
+        let Some(analysis) = self.analysis.as_ref() else {
+            return;
+        };
+        let q = self.search_text.trim().to_ascii_lowercase();
+        if q.is_empty() {
+            return;
+        }
+        let n = analysis.instructions.len();
+        if n == 0 {
+            return;
+        }
+        for k in 1..=n {
+            let idx = (self.selected + k) % n;
+            if analysis.instructions[idx]
+                .text
+                .to_ascii_lowercase()
+                .contains(&q)
+            {
+                self.selected = idx;
+                self.pending_scroll = Some(idx);
+                return;
+            }
+        }
+    }
+
+    /// Right-hand panel: extracted strings and the pseudocode (decompiler) view.
+    fn render_info_panel(&mut self, ctx: &egui::Context) {
+        let mut jump_to: Option<u64> = None;
+        egui::SidePanel::right("info_panel")
+            .resizable(true)
+            .default_width(340.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.info_tab, InfoTab::Strings, "Strings");
+                    ui.selectable_value(&mut self.info_tab, InfoTab::Pseudocode, "Pseudocode");
+                });
+                ui.separator();
+                let analysis = match self.analysis.as_ref() {
+                    Some(a) => a,
+                    None => return,
+                };
+                match self.info_tab {
+                    InfoTab::Strings => render_strings(ui, analysis, &mut jump_to),
+                    InfoTab::Pseudocode => {
+                        render_pseudocode(ui, analysis, self.selected_function)
+                    }
+                }
+            });
+        if let Some(addr) = jump_to {
+            let target = format!("0x{addr:x}");
+            self.goto_text = target.clone();
+            self.goto(&target);
+        }
+    }
+}
+
+/// Locate the QA sample binary (`examples/samples`) relative to the running
+/// executable, walking up to the workspace root.
+fn sample_path() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent()?;
+    let candidates = [
+        "examples/samples/target/release/armature-sample.exe",
+        "examples/samples/target/release/armature-sample",
+        "examples/samples/target/debug/armature-sample.exe",
+        "examples/samples/target/debug/armature-sample",
+    ];
+    loop {
+        for c in &candidates {
+            let p = dir.join(c);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        dir = dir.parent()?;
     }
 }
 
@@ -326,6 +565,7 @@ fn render_graph(
     ui: &mut egui::Ui,
     analysis: &Analysis,
     selected_function: &mut usize,
+    cached_cfg: &mut Option<(usize, Cfg)>,
     addr_to_idx: &HashMap<u64, usize>,
     selected: &mut usize,
     pending_scroll: &mut Option<usize>,
@@ -346,10 +586,19 @@ fn render_graph(
 
     let idx = (*selected_function).min(funcs.len() - 1);
     let func = &funcs[idx];
-    let single = Module {
-        functions: vec![func.clone()],
-    };
-    let cfg = armature_analysis::build_cfg(&single);
+
+    // Cache the per-function CFG: only rebuild when the selection changes (not
+    // every frame).
+    let rebuild = !matches!(cached_cfg, Some((cached_idx, _)) if *cached_idx == idx);
+    if rebuild {
+        let single = Module {
+            functions: vec![func.clone()],
+        };
+        let cfg = armature_analysis::build_cfg(&single);
+        *cached_cfg = Some((idx, cfg));
+    }
+    let cfg = &cached_cfg.as_ref().unwrap().1;
+
     ui.label(format!(
         "{} blocks, {} edges (function {}/{})",
         cfg.nodes.len(),
@@ -361,7 +610,7 @@ fn render_graph(
     let selected_addr = analysis.instructions.get(*selected).map(|i| i.address);
     draw_cfg_canvas(
         ui,
-        &cfg,
+        cfg,
         addr_to_idx,
         selected_addr,
         selected,
@@ -522,4 +771,52 @@ fn draw_arrowhead(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, str
     let right = back - perp * size * 0.5;
     painter.line_segment([to, left], stroke);
     painter.line_segment([to, right], stroke);
+}
+
+/// Strings panel: list the printable strings (ASCII / UTF-16) discovered in the
+/// image. Clicking a string jumps the Assembly view to the nearest instruction
+/// at or after that address (data references typically resolve to a load nearby).
+fn render_strings(ui: &mut egui::Ui, analysis: &Analysis, jump_to: &mut Option<u64>) {
+    ui.label(format!("{} string(s)", analysis.strings.len()));
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for s in &analysis.strings {
+            let kind = match s.kind {
+                armature_analysis::StringKind::Ascii => "ascii",
+                armature_analysis::StringKind::Utf16 => "utf16",
+            };
+            let label = format!("0x{:08x} [{:5}] {}", s.addr, kind, s.text);
+            if ui.selectable_label(false, label).clicked() {
+                *jump_to = Some(s.addr);
+            }
+        }
+    });
+}
+
+/// Pseudocode panel: render the selected function (mirrors the Graph view's
+/// selection) as a C-like listing via the IR decompiler.
+fn render_pseudocode(ui: &mut egui::Ui, analysis: &Analysis, selected_function: usize) {
+    let funcs = &analysis.module.functions;
+    if funcs.is_empty() {
+        ui.label("(no functions recovered)");
+        return;
+    }
+    let idx = selected_function.min(funcs.len() - 1);
+    let names: std::collections::HashMap<u64, String> = funcs
+        .iter()
+        .map(|f| (f.start, f.name.clone().unwrap_or_else(|| format!("fn_{:x}", f.start))))
+        .collect();
+    let pseudo = armature_analysis::decompile_function(&funcs[idx], &names);
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.monospace(pseudo);
+    });
+}
+
+/// Parse a hex (`0x…`) or decimal address from user input.
+fn parse_addr_gui(s: &str) -> Option<u64> {
+    let t = s.trim();
+    if let Some(h) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        u64::from_str_radix(h, 16).ok()
+    } else {
+        t.parse::<u64>().ok()
+    }
 }

@@ -113,3 +113,76 @@ Tracks implementation of `spec.txt` (System Design Document v1.0). Organized by 
       with a linear-sweep fallback for full coverage.
 - [x] `build_cfg` now spans all recovered functions (combined CFG).
 - [x] CLI `analyze` reports function count; Rhai `function_count` binding added.
+
+## Phase 8 — Bugs, gaps & adoption (backlog from review)
+
+Tracking the items surfaced in the platform review: correctness bugs, missing
+features, innovation ideas, and adoption blockers.
+
+### Bugs (correctness)
+
+- [x] Fix loop/back-edge counting in `cfg.rs`: `count_back_edges` over-reports
+       loops (counts any `target_addr < from_start` edge, including `Call` and
+       cross-function edges; ignores `blocks`/`addr_to_idx`). Restrict to in-
+       function edges, exclude `Call`, or do dominator-based back-edge detection.
+- [x] Cache the per-function CFG in the GUI instead of rebuilding it every frame
+       (`armature-gui/src/app.rs` `render_graph` calls `build_cfg` + BFS layout on
+       each `update()`). Rebuild only on function-selection change.
+- [x] Offload analysis off the GUI UI thread (`app.rs` `load()` runs
+       `analyze_binary` synchronously and freezes the window on large binaries).
+       Use a background thread / `eframe` async poll with a progress state.
+- [x] Make `Architecture::is_disassemblable()` feature-aware (currently returns
+       `false` for ARM/AArch64 even when the `arm` feature provides a backend).
+- [x] Handle indirect branches/calls in function recovery: `branch_target` only
+       reads `Operand::Imm`, so `call rax`/`jmp [table]` ends recovery and
+       fragments functions. Keep fallthrough for unresolved terminators and/or
+       resolve jump tables.
+- [x] Disassemble all executable sections, not just the first
+       (`map.rs` `code_section()` returns the first executable section only).
+       Add a section selector for multi-section / packed / Mach-O stub coverage.
+- [x] Cap `disasm` output when no `-n` is given (`main.rs` dumps the entire
+       instruction stream); mirror the `cfg` cap + notice behavior.
+- [x] Document/strengthen `Instruction::defs()`/`uses()` imprecision (e.g.
+       `mov [rax], rbx` wrongly reports `rax` as defined; `push`/`pop` ignore
+       `rsp`; no flag registers).
+
+### Missing features
+
+- [x] Persist/export renames (rename + symbol annotations are in-memory only;
+       add JSON/CSV/idc export and `analyze --json` for automation/CI).
+- [ ] GUI goto-address, search, and keyboard navigation (only click nav exists).
+- [ ] String and constant extraction pass.
+- [ ] Debug-info import (PDB/DWARF) in `armature-formats` (currently only
+      container symbols).
+- [ ] Plugin auto-discovery / directory loading for Wasm plugins.
+- [ ] Prebuilt-binary download link in README/PACKAGING (release artifacts).
+
+### Adoption blockers (docs / CI / CLI)
+
+- [x] Add a `plugin`/`wasm` CLI subcommand and enable `armature-ext/wasm` on
+       `armature-cli` so the documented Wasm plugin ABI is actually runnable.
+- [x] CI: add a `--all-features` build + clippy job and a `cargo test` job
+       (currently only default features are built/linted; the `rhai` quick-start,
+       ARM, Wasm, and GUI code are never verified).
+- [x] Fix README feature-flag table: `-p armature-cli --features arm/wasm`
+       fails (cli only exposes `rhai`); align docs or expose those features.
+- [x] Consistent GUI feature naming (`app` vs `scripts`) across README,
+       PACKAGING, justfile, and `just build-wasm-gui`.
+- [x] Document the unreleased `function_count` Rhai binding in `docs/SCRIPTING.md`.
+
+### Adoption — examples & templates
+
+- [x] `just` recipe to build + run the `hello` Wasm plugin end-to-end.
+- [ ] "5-minute quickstart" doc with a screenshot and expected `analyze` output
+       using `examples/samples`.
+- [ ] `templates/` area: "first analysis" Rhai cheat-sheet + a minimal annotated
+       sample binary.
+- [x] GUI "Open Sample" button that auto-loads `examples/samples`.
+
+### Innovation (nice-to-have, differentiators)
+
+- [ ] Pseudocode / decompiler view (IR -> C-like).
+- [ ] Bindiff-style binary diffing between two builds.
+- [ ] `armature watch` to re-analyze on rebuild.
+- [ ] `armature serve` headless web UI.
+- [ ] Shared script/template marketplace repo.

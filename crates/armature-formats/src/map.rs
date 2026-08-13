@@ -64,6 +64,30 @@ pub struct Export {
     pub addr: u64,
 }
 
+/// A symbol recovered from auxiliary debug information (ELF `.symtab`, PDB
+/// public symbols, ...). These augment the container's import/export tables
+/// with richer, often stripped, names (function/variable symbols).
+#[derive(Debug, Clone)]
+pub struct DebugSymbol {
+    /// Symbol name.
+    pub name: String,
+    /// Virtual address of the symbol.
+    pub addr: u64,
+    /// Kind hint for display/filtering.
+    pub kind: DebugSymbolKind,
+}
+
+/// The kind of a [`DebugSymbol`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebugSymbolKind {
+    /// A function / subroutine symbol.
+    Function,
+    /// A data / variable symbol.
+    Data,
+    /// Unknown / other.
+    Other,
+}
+
 /// A container-format-independent view of a loaded binary.
 ///
 /// This is the contract between Layer 1 (ingestion) and Layer 2 (analysis).
@@ -83,6 +107,8 @@ pub struct MemoryMap {
     pub imports: Vec<Import>,
     /// Exported symbols.
     pub exports: Vec<Export>,
+    /// Symbols recovered from auxiliary debug information (when available).
+    pub debug_symbols: Vec<DebugSymbol>,
 }
 
 impl MemoryMap {
@@ -92,6 +118,16 @@ impl MemoryMap {
             .iter()
             .find(|s| s.is_executable && !s.data.is_empty())
             .or_else(|| self.sections.iter().find(|s| s.is_executable))
+    }
+
+    /// Return every executable section (`.text`, `.text.unlikely`, trampolines,
+    /// Mach-O stubs, packed sections, ...), in container order. Analysis
+    /// disassembles *all* of these rather than just the first match.
+    pub fn executable_sections(&self) -> Vec<&Section> {
+        self.sections
+            .iter()
+            .filter(|s| s.is_executable && !s.data.is_empty())
+            .collect()
     }
 
     /// Return the first writable data section, if any.

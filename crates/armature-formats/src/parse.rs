@@ -2,7 +2,7 @@
 
 use crate::arch::{self, Architecture};
 use crate::error::{FormatError, Result};
-use crate::map::{BinaryFormat, Export, Import, MemoryMap, Section};
+use crate::map::{BinaryFormat, DebugSymbol, DebugSymbolKind, Export, Import, MemoryMap, Section};
 
 /// Parse a raw binary blob into a standardized [`MemoryMap`].
 ///
@@ -19,6 +19,7 @@ pub fn parse(bytes: &[u8]) -> Result<MemoryMap> {
         sections: Vec::new(),
         imports: Vec::new(),
         exports: Vec::new(),
+        debug_symbols: Vec::new(),
     };
 
     match object {
@@ -114,6 +115,27 @@ fn parse_elf(elf: goblin::elf::Elf<'_>, bytes: &[u8], map: &mut MemoryMap) -> Re
             map.exports.push(Export {
                 name,
                 addr: sym.st_value,
+            });
+        }
+    }
+
+    #[cfg(feature = "debuginfo")]
+    {
+        const SHN_UNDEF: usize = 0;
+        for sym in elf.syms.iter() {
+            let name = elf.strtab.get_at(sym.st_name).unwrap_or("").to_string();
+            if name.is_empty() || sym.st_shndx == SHN_UNDEF {
+                continue;
+            }
+            let kind = match sym.st_type() {
+                STT_FUNC => DebugSymbolKind::Function,
+                STT_OBJECT => DebugSymbolKind::Data,
+                _ => DebugSymbolKind::Other,
+            };
+            map.debug_symbols.push(DebugSymbol {
+                name,
+                addr: sym.st_value,
+                kind,
             });
         }
     }

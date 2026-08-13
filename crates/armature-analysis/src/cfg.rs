@@ -134,7 +134,7 @@ impl Cfg {
             }
         }
 
-        let loop_count = count_back_edges(&blocks, &edges, &addr_to_idx);
+        let loop_count = count_back_edges(&blocks, &edges);
         Cfg {
             nodes: blocks,
             edges,
@@ -184,22 +184,70 @@ fn branch_imm(term: &Instruction) -> Option<u64> {
     }
 }
 
-/// A back-edge (destination dominates source) is a conservative loop indicator.
-fn count_back_edges(
-    blocks: &[BasicBlock],
-    edges: &[Edge],
-    addr_to_idx: &std::collections::HashMap<u64, usize>,
-) -> usize {
-    let _ = (blocks, addr_to_idx);
-    // Simple heuristic: an edge whose target address is strictly less than the
-    // source block's start is a backward jump, i.e. a loop back-edge.
-    edges
+/// A back-edge is an edge from a CFG node to one of its own DFS ancestors
+/// (i.e. an edge that closes a cycle). This is the standard definition of a loop
+/// back-edge and avoids the false positives of the old address-order heuristic,
+/// which counted any backward jump — including `Call` edges, cross-function
+/// edges, and fall-throughs to earlier addresses — as a loop.
+///
+/// The CFG built by [`Cfg::from_blocks`] is scoped to a single function, so every
+/// surviving edge (by node index) is already in-function; we additionally skip
+/// [`EdgeKind::Call`] edges since a call is control transfer, not a loop.
+fn count_back_edges(blocks: &[BasicBlock], edges: &[Edge]) -> usize {
+    let _ = blocks;
+    let n = edges
         .iter()
-        .filter(|e| {
-            let from_start = blocks.get(e.from).map(|b| b.start).unwrap_or(0);
-            e.target_addr < from_start
-        })
-        .count()
+        .map(|e| e.from.max(e.to))
+        .max()
+        .map_or(0, |m| m + 1);
+    if n == 0 {
+        return 0;
+    }
+
+    // Adjacency list (skip Call edges).
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for e in edges {
+        if e.kind == EdgeKind::Call {
+            continue;
+        }
+        if e.from < n && e.to < n {
+            adj[e.from].push(e.to);
+        }
+    }
+
+    // DFS three-color marking: 0 = unvisited (white), 1 = on stack (gray),
+    // 2 = done (black). An edge to a gray node is a back-edge.
+    const GRAY: u8 = 1;
+    let mut color = vec![0u8; n];
+    let mut back_edges = 0usize;
+    // Iterative DFS to avoid stack overflow on large functions.
+    for start in 0..n {
+        if color[start] != 0 {
+            continue;
+        }
+        let mut stack: Vec<(usize, usize)> = vec![(start, 0)];
+        color[start] = GRAY;
+        while let Some((u, ei)) = stack.last().copied() {
+            if ei < adj[u].len() {
+                stack.last_mut().unwrap().1 += 1;
+                let v = adj[u][ei];
+                match color[v] {
+                    0 => {
+                        color[v] = GRAY;
+                        stack.push((v, 0));
+                    }
+                    1 => {
+                        back_edges += 1;
+                    }
+                    _ => {}
+                }
+            } else {
+                color[u] = 2;
+                stack.pop();
+            }
+        }
+    }
+    back_edges
 }
 
 #[cfg(test)]
@@ -269,7 +317,46 @@ mod tests {
             .edges
             .iter()
             .any(|e| e.kind == EdgeKind::Unconditional && e.to == 0 && e.target_addr == 0x100));
+        // One genuine loop: the outer `jmp 0x100`. (The `jne` is mid-block, so it
+        // is not a terminator and contributes no edge.)
         assert_eq!(cfg.loop_count, 1);
+    }
+
+    #[test]
+    fn cfg_back_edges_exclude_calls_and_cross_function() {
+        // A `call` to an earlier address and a backward jump into another
+        // function must NOT be counted as loops by the new cycle-aware detector.
+        // 0x100: call 0x000     (call to a lower address — not a loop)
+        // 0x105: ret
+        // 0x200: jmp 0x100      (jump back into function A — cross-function)
+        // 0x205: ret
+        let blocks = vec![
+            block(
+                0,
+                0x100,
+                vec![
+                    ins(0x100, Mnemonic::Call, vec![Operand::Imm(0x000)]),
+                    ins(0x105, Mnemonic::Ret, vec![]),
+                ],
+            ),
+            block(
+                1,
+                0x200,
+                vec![
+                    ins(0x200, Mnemonic::Jmp, vec![Operand::Imm(0x100)]),
+                    ins(0x205, Mnemonic::Ret, vec![]),
+                ],
+            ),
+        ];
+        let cfg = Cfg::from_blocks(blocks);
+        // The only edge targetting a lower address is a `Call`, which the
+        // detector excludes; the cross-function `jmp` has no node in this CFG,
+        // so it produces no edge at all.
+        assert_eq!(cfg.loop_count, 0);
+        assert!(cfg
+            .edges
+            .iter()
+            .all(|e| e.kind != EdgeKind::Call || e.target_addr >= cfg.nodes[e.from].start));
     }
 
     #[test]

@@ -27,6 +27,7 @@ The CLI prints every rename the script produced as `0x<addr> -> <name>`.
 | `arch`           | `String`        | Architecture (`x86` / `x86_64` / ...).       |
 | `entry`          | `i64`           | Entry point virtual address.                |
 | `instruction_count` | `i64`        | Total decoded instructions.                  |
+| `function_count` | `i64`         | Number of functions recovered by the analysis (`recover_functions`). |
 | `imports`        | `Array` of `{name, dll}` | Imported symbols.                    |
 | `exports`        | `Array` of `{name, addr, targets}` | Exported symbols; `targets` are symbol addresses each export references. |
 | `symbol_xrefs`   | `Array` of `{from, to}` | Symbol cross-references (from instruction to symbol address). |

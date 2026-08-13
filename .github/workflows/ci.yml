@@ -30,5 +30,27 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build docs
         run: cargo doc --workspace --no-deps --document-private-items
-      - name: Smoke test (analyze self)
-        run: cargo run -p armature-cli -- analyze target/debug/armature
+  - name: Smoke test (analyze self)
+    run: cargo run -p armature-cli -- analyze target/debug/armature
+
+  # Heavier job that exercises the feature-gated code paths (ARM backend, Rhai
+  # scripting, Wasm plugins, and the egui GUI) which the default build never
+  # compiles or tests.
+  all-features:
+    name: all-features (build / clippy / test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Add wasm32 target (for the Wasm plugin host tests)
+        run: rustup target add wasm32-unknown-unknown
+      - name: Build (all features)
+        run: cargo build --workspace --all-features --all-targets
+      - name: Clippy (all features)
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      - name: Test (all features)
+        run: cargo test --workspace --all-features
+

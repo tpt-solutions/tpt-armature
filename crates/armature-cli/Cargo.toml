@@ -25,3 +25,11 @@ anyhow.workspace = true
 default = []
 # Enable the `script` subcommand (Rhai automation).
 rhai = ["dep:armature-ext", "armature-ext/rhai"]
+# Enable the `plugin` subcommand (sandboxed Wasm plugins).
+wasm = ["dep:armature-ext", "armature-ext/wasm"]
+# Forward to the disassembly backend's ARM/AArch64 support (for `--all-features`
+# builds and parity with the documented feature matrix).
+arm = ["armature-disasm/arm"]
+# Debug-information import: ELF `.symtab` (always on with this feature) and PDB
+# public-symbol merging for PE via the `analyze --pdb` option.
+debuginfo = ["armature-formats/debuginfo"]

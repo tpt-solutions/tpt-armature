@@ -34,19 +34,27 @@ cargo run -p armature-cli --features rhai -- script path/to/binary crates/armatu
 
 Feature flags (keep the default workspace build light):
 
-| Flag    | Enables                                  |
-| ------- | ---------------------------------------- |
-| `arm`   | ARM / AArch64 disassembly (yaxpeax)      |
-| `app`   | Native `egui` GUI (`armature-gui`)       |
-| `rhai`  | Rhai scripting (`armature-ext` + `script` subcommand) |
-| `wasm`  | Sandboxed Wasm plugins (`armature-ext`)  |
+| Flag    | Crate             | Enables                                              |
+| ------- | ----------------- | ---------------------------------------------------- |
+| `arm`   | `armature-cli`, `armature-disasm` | ARM / AArch64 disassembly (yaxpeax)         |
+| `app`   | `armature-gui`    | Native `egui` GUI (also enables the `scripts` console) |
+| `scripts` | `armature-gui`  | In-app Rhai script console (implies `app`)          |
+| `rhai`  | `armature-cli`, `armature-ext` | Rhai scripting + `script` subcommand     |
+| `wasm`  | `armature-cli`, `armature-ext` | Sandboxed Wasm plugins + `plugin` subcommand |
 
-Build everything with `cargo build --workspace --all-features`.
+All flags are also available together via `cargo build --workspace --all-features`.
 
 The GUI lives in `armature-gui`; build and run it with the `app` feature:
 
 ```sh
 cargo run -p armature-gui --features app -- path/to/binary
+```
+
+Run a sandboxed Wasm plugin against a binary (needs the `wasm` feature):
+
+```sh
+cargo run -p armature-cli --features wasm -- plugin path/to/binary \
+    crates/armature-ext/examples/plugins/hello/target/wasm32-unknown-unknown/release/armature_hello_plugin.wasm
 ```
 
 ### Demo with no sample binary required

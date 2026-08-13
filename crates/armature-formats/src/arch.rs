@@ -22,9 +22,19 @@ impl Architecture {
         }
     }
 
-    /// Whether this architecture can be disassembled by the default backends.
+    /// Whether this architecture can be disassembled by the available backends.
+    ///
+    /// x86/x64 are always supported (iced). ARM/AArch64 are supported when the
+    /// `arm` feature is enabled on the disassembly layer (yaxpeax); the feature
+    /// propagates here so callers can query capability without depending on the
+    /// disassembly crate directly.
     pub fn is_disassemblable(self) -> bool {
-        matches!(self, Architecture::X86 | Architecture::X86_64)
+        match self {
+            Architecture::X86 | Architecture::X86_64 => true,
+            #[cfg(feature = "arm")]
+            Architecture::Arm | Architecture::Aarch64 => true,
+            _ => false,
+        }
     }
 }
 
@@ -128,6 +138,9 @@ mod tests {
     fn bits_and_disassemblable() {
         assert_eq!(Architecture::X86_64.bits(), Some(64));
         assert!(Architecture::X86.is_disassemblable());
+        #[cfg(not(feature = "arm"))]
         assert!(!Architecture::Arm.is_disassemblable());
+        #[cfg(feature = "arm")]
+        assert!(Architecture::Arm.is_disassemblable());
     }
 }

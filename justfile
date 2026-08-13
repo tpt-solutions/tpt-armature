@@ -53,6 +53,14 @@ build-wasm-example:
     cargo build --release --target wasm32-unknown-unknown \
         --manifest-path crates/armature-ext/examples/plugins/hello/Cargo.toml
 
+# Build + run the example Wasm plugin against the freshly built CLI binary.
+# Demonstrates the `armature` plugin ABI end-to-end (needs the `wasm` feature).
+run-wasm:
+    just build-wasm-example
+    cargo build -p armature-cli --features wasm
+    cargo run -p armature-cli --features wasm -- plugin target/debug/armature \
+        crates/armature-ext/examples/plugins/hello/target/wasm32-unknown-unknown/release/armature_hello_plugin.wasm
+
 # Build the GUI for the browser (wasm32). Mounts into the #armature_canvas element.
 build-wasm-gui:
     rustup target add wasm32-unknown-unknown
