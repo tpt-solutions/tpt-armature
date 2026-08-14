@@ -415,10 +415,14 @@ mod tests {
             ],
         )];
         blocks.push(block(1, 0x140, vec![ins(0x140, Mnemonic::Ret, vec![])]));
-        blocks.push(block(0, 0x200, vec![
-            ins(0x200, Mnemonic::Mov, vec![]),
-            ins(0x204, Mnemonic::Jmp, vec![Operand::Imm(0x100)]),
-        ]));
+        blocks.push(block(
+            0,
+            0x200,
+            vec![
+                ins(0x200, Mnemonic::Mov, vec![]),
+                ins(0x204, Mnemonic::Jmp, vec![Operand::Imm(0x100)]),
+            ],
+        ));
         blocks.push(block(1, 0x208, vec![ins(0x208, Mnemonic::Ret, vec![])]));
 
         // func_of: first two blocks belong to function 0, last two to function 1.

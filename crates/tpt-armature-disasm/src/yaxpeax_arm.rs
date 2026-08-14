@@ -184,7 +184,11 @@ fn parse_branch_target(text: &str, insn_addr: u64) -> Option<u64> {
         {
             let neg = bytes[i] == b'-';
             let start = if bytes[i] == b'#' { i + 1 } else { i };
-            let hex_start = if bytes[start] == b'-' { start + 1 } else { start };
+            let hex_start = if bytes[start] == b'-' {
+                start + 1
+            } else {
+                start
+            };
             // Skip `0x`.
             let mut j = hex_start + 2;
             let digits_start = j;
@@ -275,7 +279,7 @@ fn mem_operand(text: &str) -> Option<Operand> {
     let mut base = None;
     let mut index = None;
     let mut scale: u8 = 1;
-    for part in inner.split(|c| c == ',' || c == '+' || c == '-' || c == '*' || c == ' ') {
+    for part in inner.split([',', '+', '-', '*', ' ']) {
         let p = part.trim();
         if p.is_empty() {
             continue;
@@ -319,8 +323,8 @@ fn is_reg(s: &str) -> bool {
     }
     let first = lower.chars().next();
     match first {
-        Some('x') | Some('w') | Some('v') | Some('q') | Some('b') | Some('h')
-        | Some('s') | Some('d') | Some('r') => lower[1..].chars().all(|c| c.is_ascii_digit()),
+        Some('x') | Some('w') | Some('v') | Some('q') | Some('b') | Some('h') | Some('s')
+        | Some('d') | Some('r') => lower[1..].chars().all(|c| c.is_ascii_digit()),
         _ => false,
     }
 }

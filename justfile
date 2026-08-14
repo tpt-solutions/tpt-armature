@@ -96,3 +96,15 @@ strings BINARY="target/debug/tpt-armature":
 # Re-analyze a binary whenever it changes on disk (polls every second).
 watch BINARY="target/debug/tpt-armature":
     cargo run -p tpt-armature-cli -- watch {{BINARY}} -i 1
+
+# Serve analysis over HTTP (headless web UI). Open http://127.0.0.1:8080 in a
+# browser, or pull /api/analyze from automation (needs the `serve` feature).
+serve BINARY="target/debug/tpt-armature" PORT="8080":
+    cargo build -p tpt-armature-cli --features serve
+    cargo run -p tpt-armature-cli --features serve -- serve {{BINARY}} --port {{PORT}}
+
+# First-time contributor setup: add the wasm32 target used by the plugin/GUI
+# recipes and install the local git hooks that enforce `cargo fmt --check`.
+setup:
+    rustup target add wasm32-unknown-unknown
+    git config core.hooksPath .githooks 2>$null || true

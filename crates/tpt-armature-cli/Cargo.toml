@@ -33,6 +33,7 @@ tpt-armature-analysis = { path = "../tpt-armature-analysis" }
 tpt-armature-ext = { path = "../tpt-armature-ext", optional = true }
 clap.workspace = true
 anyhow.workspace = true
+tiny_http = { version = "0.12", optional = true }
 
 [features]
 default = []
@@ -46,3 +47,5 @@ arm = ["tpt-armature-disasm/arm"]
 # Debug-information import: ELF `.symtab` (always on with this feature) and PDB
 # public-symbol merging for PE via the `analyze --pdb` option.
 debuginfo = ["tpt-armature-formats/debuginfo"]
+# Headless web UI: serve the analysis of a binary over HTTP.
+serve = ["dep:tiny_http"]

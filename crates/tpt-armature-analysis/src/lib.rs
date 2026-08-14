@@ -18,7 +18,7 @@ pub use cfg::{build_cfg, Cfg, Edge, EdgeKind};
 pub use dataflow::{analyze, DataFlow};
 pub use decompile::{decompile_function, decompile_module};
 pub use error::{AnalysisError, Result};
-pub use export::{analysis_to_json, export_renames, RenameFormat};
+pub use export::{analysis_to_json, export_renames, parse_renames, RenameFormat};
 pub use pipeline::{analyze_binary, analyze_map, Analysis};
 pub use strings::{extract_constants, extract_strings, ExtractedString, StringKind};
 pub use xref::{build_xrefs, Xref, XrefIndex, XrefKind};

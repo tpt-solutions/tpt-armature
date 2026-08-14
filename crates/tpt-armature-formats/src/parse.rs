@@ -140,6 +140,10 @@ fn parse_elf(elf: goblin::elf::Elf<'_>, bytes: &[u8], map: &mut MemoryMap) -> Re
                 kind,
             });
         }
+        // DWARF subprogram names/addresses (best-effort; missing/odd debug info
+        // is ignored rather than fatal).
+        map.debug_symbols
+            .extend(crate::debuginfo::parse_dwarf_elf(&elf, bytes));
     }
 
     map.entry_point = elf.header.e_entry;

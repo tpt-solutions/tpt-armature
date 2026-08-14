@@ -27,6 +27,7 @@ categories = [
 goblin.workspace = true
 thiserror.workspace = true
 pdb = { version = "0.8", optional = true }
+gimli = { version = "0.31", optional = true, default-features = false, features = ["read", "std"] }
 
 [features]
 default = []
@@ -35,8 +36,9 @@ default = []
 # backend. `tpt-armature-disasm/arm` enables this feature transitively.
 arm = []
 # Debug-information import: ELF `.symtab` recovery (always active under this
-# feature) and PDB public-symbol parsing for PE (via the `pdb` crate).
-debuginfo = ["dep:pdb"]
+# feature), PDB public-symbol parsing for PE (via the `pdb` crate), and DWARF
+# subprogram names/addresses from ELF (via the `gimli` crate).
+debuginfo = ["dep:pdb", "dep:gimli"]
 
 [dev-dependencies]
 anyhow.workspace = true

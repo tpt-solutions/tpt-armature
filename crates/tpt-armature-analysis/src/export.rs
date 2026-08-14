@@ -31,6 +31,80 @@ impl RenameFormat {
     }
 }
 
+/// Parse address -> name renames from the requested [`RenameFormat`].
+///
+/// This is the inverse of [`export_renames`] and lets renames produced by a
+/// script or plugin be persisted and re-loaded (e.g. `analyze --rename-file`)
+/// so they round-trip between automation runs.
+pub fn parse_renames(text: &str, format: RenameFormat) -> Result<HashMap<u64, String>, String> {
+    let mut out = HashMap::new();
+    match format {
+        RenameFormat::Json => {
+            let value: serde_json::Value =
+                serde_json::from_str(text).map_err(|e| format!("invalid rename JSON: {e}"))?;
+            let arr = value
+                .get("renames")
+                .and_then(|r| r.as_array())
+                .ok_or_else(|| "rename JSON missing a \"renames\" array".to_string())?;
+            for item in arr {
+                let addr_raw = item
+                    .get("addr")
+                    .and_then(|a| a.as_str().map(|s| s.to_string()))
+                    .or_else(|| item.get("addr").map(|a| a.to_string()));
+                let name = item.get("name").and_then(|n| n.as_str());
+                if let (Some(a), Some(n)) = (addr_raw, name) {
+                    if let Some(addr) = parse_addr_any(&a) {
+                        out.insert(addr, n.to_string());
+                    }
+                }
+            }
+        }
+        RenameFormat::Csv => {
+            for line in text
+                .lines()
+                .skip_while(|l| l.trim().eq_ignore_ascii_case("addr,name"))
+            {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                if let Some((a, n)) = line.split_once(',') {
+                    if let Some(addr) = parse_addr_any(a.trim()) {
+                        out.insert(addr, n.trim().to_string());
+                    }
+                }
+            }
+        }
+        RenameFormat::Idc => {
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(rest) = line.strip_prefix("MakeName(") {
+                    if let Some(end) = rest.find(')') {
+                        let inner = &rest[..end];
+                        if let Some((a, n)) = inner.split_once(',') {
+                            let name = n.trim().trim_matches('"').trim_matches('\'');
+                            if let Some(addr) = parse_addr_any(a.trim()) {
+                                out.insert(addr, name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Parse an address from `0x…` / `0X…` (hex) or a plain decimal string.
+fn parse_addr_any(s: &str) -> Option<u64> {
+    let t = s.trim();
+    if let Some(h) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        u64::from_str_radix(h, 16).ok()
+    } else {
+        t.parse::<u64>().ok()
+    }
+}
+
 /// Serialize address -> name renames to the requested [`RenameFormat`].
 pub fn export_renames(renames: &HashMap<u64, String>, format: RenameFormat) -> String {
     let mut entries: Vec<(&u64, &String)> = renames.iter().collect();
@@ -130,4 +204,31 @@ fn escape_json(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renames_round_trip_json() {
+        let mut renames = HashMap::new();
+        renames.insert(0x401000u64, "main".to_string());
+        renames.insert(0x402000u64, "helper".to_string());
+        let json = export_renames(&renames, RenameFormat::Json);
+        let parsed = parse_renames(&json, RenameFormat::Json).unwrap();
+        assert_eq!(parsed, renames);
+    }
+
+    #[test]
+    fn parses_csv_and_idc() {
+        let csv = "addr,name\n0x401000,main\n0x402000,helper\n";
+        let parsed = parse_renames(csv, RenameFormat::Csv).unwrap();
+        assert_eq!(parsed.get(&0x401000), Some(&"main".to_string()));
+        assert_eq!(parsed.get(&0x402000), Some(&"helper".to_string()));
+
+        let idc = "#include <idc.idc>\nstatic main() {\n    MakeName(0x401000, \"main\");\n}\n";
+        let parsed = parse_renames(idc, RenameFormat::Idc).unwrap();
+        assert_eq!(parsed.get(&0x401000), Some(&"main".to_string()));
+    }
 }

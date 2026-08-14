@@ -47,7 +47,8 @@ Feature flags (keep the default workspace build light):
 | `scripts`  | `tpt-armature-gui`    | In-app Rhai script console (implies `app`)          |
 | `rhai`     | `tpt-armature-cli`, `tpt-armature-ext` | Rhai scripting + `script` subcommand     |
 | `wasm`     | `tpt-armature-cli`, `tpt-armature-ext` | Sandboxed Wasm plugins + `plugin`/`plugins` subcommands |
-| `debuginfo`| `tpt-armature-cli`, `tpt-armature-formats` | ELF `.symtab` + PE PDB symbol import (`analyze --pdb`) |
+| `debuginfo`| `tpt-armature-cli`, `tpt-armature-formats` | ELF `.symtab` + PE PDB + DWARF symbol import (`analyze --pdb`) |
+| `serve`    | `tpt-armature-cli`                    | Headless web UI (`serve` subcommand)    |
 
 All flags are also available together via `cargo build --workspace --all-features`.
 
@@ -63,6 +64,20 @@ Run a sandboxed Wasm plugin against a binary (needs the `wasm` feature):
 cargo run -p tpt-armature-cli --features wasm -- plugin path/to/binary \
     crates/tpt-armature-ext/examples/plugins/tpt-armature-hello-plugin/target/wasm32-unknown-unknown/release/tpt_armature_hello_plugin.wasm
 ```
+
+Serve the analysis over HTTP (headless web UI, useful in CI containers or for
+sharing a view in a browser):
+
+```sh
+cargo run -p tpt-armature-cli --features serve -- serve path/to/binary --port 8080
+# open http://127.0.0.1:8080  (JSON at /api/analyze)
+```
+
+### Try it in a browser
+
+The GUI builds to WebAssembly; `just build-wasm-gui` produces a `tpt-armature-gui`
+wasm bundle that mounts into a `#armature_canvas` element — host it statically to
+give users a zero-install demo.
 
 ### Demo with no sample binary required
 
@@ -98,15 +113,18 @@ Download the archive for your OS, extract it, and run `./tpt-armature analyze
 ## Status
 
 This is an active build following `todo.md`. The ingestion, IR, disassembly,
-analysis, and CLI layers are functional for x86/x64. ARM/AArch64 disassembly is
-available behind the `arm` feature, and the extension layer (Rhai / wasmtime)
-behind the `rhai` and `wasm` features. Mach-O entry points and exports are now
-resolved to virtual addresses.
+analysis, and CLI layers are functional for x86/x64. ARM/AArch64 disassembly and
+control-flow analysis are available behind the `arm` feature (mnemonic
+classification, branch-target resolution, and per-function CFG/recovery), and the
+extension layer (Rhai / wasmtime) behind the `rhai` and `wasm` features. Mach-O
+entry points and exports are now resolved to virtual addresses.
 
 Recent additions (see `todo.md`): string/constant extraction
 (`tpt-armature strings`), an IR→C-like pseudocode view (`tpt-armature decompile` and the
-GUI's Pseudocode panel), debug-information import for ELF/PDB
-(`--features debuginfo`, `analyze --pdb`), Wasm plugin directory auto-discovery
-(`tpt-armature plugins`), and `tpt-armature watch` for re-analysis on rebuild. The GUI
-adds goto-address, search, keyboard navigation, a Strings panel, and the
-Pseudocode panel.
+GUI's Pseudocode panel), debug-information import for ELF (`.symtab` + DWARF
+subprograms) and PE PDB (`--features debuginfo`, `analyze --pdb`), Wasm plugin
+directory auto-discovery (`tpt-armature plugins`), `tpt-armature watch` for re-analysis on
+rebuild, a rename round-trip (`analyze --rename-file`, plus a "Load Renames"
+button in the GUI), and a headless web UI (`--features serve`, `tpt-armature serve`).
+The GUI adds goto-address, search, keyboard navigation, a Strings panel, the
+Pseudocode panel, and rename loading.

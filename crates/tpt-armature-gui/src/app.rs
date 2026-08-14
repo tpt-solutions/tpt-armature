@@ -108,6 +108,8 @@ struct ArmatureApp {
     search_text: String,
     /// Selected right-hand info panel tab.
     info_tab: InfoTab,
+    /// Path to a renames file (json/csv/idc) to load into the analysis.
+    rename_path: String,
 }
 
 impl ArmatureApp {
@@ -128,6 +130,7 @@ impl ArmatureApp {
             goto_text: String::new(),
             search_text: String::new(),
             info_tab: InfoTab::Strings,
+            rename_path: String::new(),
         };
         if let Some(path) = std::env::args().nth(1) {
             app.start_load(PathBuf::from(path));
@@ -232,6 +235,12 @@ impl eframe::App for ArmatureApp {
                 if search_r.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
                     self.search_next(false);
                 }
+                ui.separator();
+                ui.label("renames:");
+                ui.text_edit_singleline(&mut self.rename_path);
+                if ui.button("Load").clicked() {
+                    self.load_renames();
+                }
                 let editing = goto_r.has_focus() || search_r.has_focus();
 
                 // Keyboard navigation of the Assembly view (only when no text
@@ -321,6 +330,36 @@ impl ArmatureApp {
         if next != cur {
             self.selected = next as usize;
             self.pending_scroll = Some(next as usize);
+        }
+    }
+
+    /// Load a renames file (json/csv/idc) exported by a script or plugin and
+    /// apply the names to the matching functions (round-trips with the CLI's
+    /// `--rename-file`).
+    fn load_renames(&mut self) {
+        let Some(analysis) = self.analysis.as_mut() else {
+            return;
+        };
+        let path = self.rename_path.trim();
+        if path.is_empty() {
+            return;
+        }
+        match std::fs::read_to_string(path) {
+            Ok(text) => match tpt_armature_analysis::parse_renames(
+                &text,
+                tpt_armature_analysis::RenameFormat::Json,
+            ) {
+                Ok(renames) => {
+                    for func in &mut analysis.module.functions {
+                        if let Some(name) = renames.get(&func.start) {
+                            func.name = Some(name.clone());
+                        }
+                    }
+                    self.status = format!("loaded {} rename(s) from {}", renames.len(), path);
+                }
+                Err(e) => self.status = format!("rename parse error: {e}"),
+            },
+            Err(e) => self.status = format!("cannot read {}: {e}", path),
         }
     }
 

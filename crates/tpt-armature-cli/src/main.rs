@@ -4,7 +4,6 @@
 //! section(s), and run the analysis passes. Useful for scripting and CI.
 
 use clap::{Parser, Subcommand};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -35,10 +34,17 @@ enum Command {
         #[arg(long)]
         json: bool,
         /// Optional PDB file (PE) whose public symbols are merged into the
-        /// analysis (enables the `debuginfo` feature).
-        #[cfg(feature = "debuginfo")]
+        /// analysis. Requires the `debuginfo` feature; without it the run
+        /// fails with a clear message instead of an "unexpected argument" error.
         #[arg(long)]
         pdb: Option<PathBuf>,
+        /// Load previously exported renames (json|csv|idc) and apply them to
+        /// function labels and JSON output (automation round-trip).
+        #[arg(long)]
+        rename_file: Option<PathBuf>,
+        /// Format of `--rename-file` (json|csv|idc).
+        #[arg(long, default_value = "json")]
+        rename_format: String,
     },
     /// Disassemble and print assembly text.
     Disasm {
@@ -122,6 +128,16 @@ enum Command {
         #[arg(short = 'i', long, default_value_t = 1)]
         interval: u64,
     },
+    /// Serve the analysis of a binary over HTTP (headless web UI). Useful for
+    /// CI containers and collaboration. Requires the `serve` feature.
+    #[cfg(feature = "serve")]
+    Serve {
+        /// Path to the binary to analyze and serve.
+        path: PathBuf,
+        /// Port to listen on.
+        #[arg(long, default_value_t = 8080)]
+        port: u16,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -135,15 +151,10 @@ fn main() -> anyhow::Result<()> {
             path,
             limit,
             json,
-            #[cfg(feature = "debuginfo")]
             pdb,
-        } => {
-            #[cfg(feature = "debuginfo")]
-            let pdb_arg = pdb;
-            #[cfg(not(feature = "debuginfo"))]
-            let pdb_arg: Option<PathBuf> = None;
-            cmd_analyze(resolve(path), limit, json, pdb_arg)
-        }
+            rename_file,
+            rename_format,
+        } => cmd_analyze(resolve(path), limit, json, pdb, rename_file, &rename_format),
         Command::Disasm { path, limit } => cmd_disasm(resolve(path), limit),
         Command::Decompile {
             path,
@@ -169,6 +180,8 @@ fn main() -> anyhow::Result<()> {
         #[cfg(feature = "wasm")]
         Command::Plugins { path, plugin_dir } => cmd_plugins(resolve(path), plugin_dir),
         Command::Watch { path, interval } => cmd_watch(resolve(path), interval),
+        #[cfg(feature = "serve")]
+        Command::Serve { path, port } => cmd_serve(resolve(path), port),
     }
 }
 
@@ -181,9 +194,11 @@ fn cmd_analyze(
     limit: usize,
     json: bool,
     pdb: Option<PathBuf>,
+    rename_file: Option<PathBuf>,
+    rename_format: &str,
 ) -> anyhow::Result<()> {
     let bytes = load(path)?;
-    let analysis = if let Some(pdb_path) = pdb {
+    let mut analysis = if let Some(pdb_path) = pdb {
         #[cfg(feature = "debuginfo")]
         {
             let pdb_bytes = std::fs::read(&pdb_path)
@@ -195,17 +210,38 @@ fn cmd_analyze(
         #[cfg(not(feature = "debuginfo"))]
         {
             let _ = pdb_path;
-            tpt_armature_analysis::analyze_binary(&bytes)?
+            anyhow::bail!(
+                "this build of tpt-armature was compiled without the `debuginfo` feature; \
+                 rebuild with `--features debuginfo` to use `--pdb`"
+            )
         }
     } else {
         tpt_armature_analysis::analyze_binary(&bytes)?
     };
+
+    // Load and apply any previously exported renames (automation round-trip).
+    let mut renames: std::collections::HashMap<u64, String> = std::collections::HashMap::new();
+    if let Some(rf) = rename_file {
+        let text = std::fs::read_to_string(&rf)
+            .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", rf.display()))?;
+        let fmt = tpt_armature_analysis::RenameFormat::parse(rename_format).ok_or_else(|| {
+            anyhow::anyhow!("unknown rename format '{rename_format}' (expected json|csv|idc)")
+        })?;
+        renames = tpt_armature_analysis::parse_renames(&text, fmt)
+            .map_err(|e| anyhow::anyhow!("cannot parse renames: {e}"))?;
+        for func in &mut analysis.module.functions {
+            if let Some(name) = renames.get(&func.start) {
+                func.name = Some(name.clone());
+            }
+        }
+    }
+
     let map = &analysis.map;
 
     if json {
         println!(
             "{}",
-            tpt_armature_analysis::analysis_to_json(&analysis, &HashMap::new())
+            tpt_armature_analysis::analysis_to_json(&analysis, &renames)
         );
         return Ok(());
     }
@@ -257,6 +293,9 @@ fn cmd_analyze(
         "registers    : {}",
         analysis.dataflow.registers().join(", ")
     );
+    if !renames.is_empty() {
+        println!("renames      : {} applied", renames.len());
+    }
 
     Ok(())
 }
@@ -635,4 +674,52 @@ fn parse_addr(s: &str) -> Result<u64, String> {
 
 fn hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+}
+
+/// Escape the few characters that would break an HTML `<pre>` block.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Serve the analysis of a binary over HTTP (headless web UI).
+///
+/// The binary is analyzed once at startup, then every request returns the
+/// analysis as JSON (`/api/analyze`) or a small HTML viewer (`/`) so the data
+/// can be inspected from a browser or pulled by automation without a GUI.
+#[cfg(feature = "serve")]
+fn cmd_serve(path: PathBuf, port: u16) -> anyhow::Result<()> {
+    use std::net::SocketAddr;
+
+    let bytes = load(path)?;
+    let analysis = tpt_armature_analysis::analyze_binary(&bytes)?;
+    let renames = std::collections::HashMap::new();
+    let json = tpt_armature_analysis::analysis_to_json(&analysis, &renames);
+    let html = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
+         <title>TPT Armature</title></head>\
+         <body><h1>TPT Armature — headless analysis</h1>\
+         <p>JSON API: <a href=\"/api/analyze\">/api/analyze</a></p>\
+         <pre>{}</pre></body></html>",
+        escape_html(&json)
+    );
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let server = tiny_http::Server::http(addr)
+        .map_err(|e| anyhow::anyhow!("cannot start HTTP server on {addr}: {e}"))?;
+    println!("tpt-armature serving on http://{addr} (Ctrl-C to stop)");
+
+    for request in server.incoming_requests() {
+        let (content_type, body) = if request.url() == "/api/analyze" {
+            ("application/json; charset=utf-8", json.clone())
+        } else {
+            ("text/html; charset=utf-8", html.clone())
+        };
+        let header = tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes())
+            .expect("Content-Type is valid ASCII");
+        let response = tiny_http::Response::from_string(body).with_header(header);
+        let _ = request.respond(response);
+    }
+    Ok(())
 }

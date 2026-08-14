@@ -184,7 +184,7 @@ features, innovation ideas, and adoption blockers.
 - [x] Pseudocode / decompiler view (IR -> C-like).
 - [x] Bindiff-style binary diffing between two builds.
 - [x] `armature watch` to re-analyze on rebuild.
-- [ ] `armature serve` headless web UI.
+- [x] `armature serve` headless web UI.
 - [ ] Shared script/template marketplace repo.
 
 ## Phase 9 — Platform review implementation (from `plan` review)
@@ -194,39 +194,38 @@ items, missing-feature P0s, and adoption/usability work.
 
 ### Bugs (correctness) — implement
 
-- [ ] B1: ARM/AArch64 analysis is dead — `yaxpeax_arm.rs` emits every instruction as
+- [x] B1: ARM/AArch64 analysis is dead — `yaxpeax_arm.rs` emits every instruction as
        `Mnemonic::Other` with empty operands and a fixed `size: 4`. Classify real
        mnemonics (`Jmp`/`Jcc`/`Call`/`Ret`/arithmetic/`Nop`), extract branch-target
        immediates (relative to the instruction) so CFG/function recovery work, and
        populate at least the destination register for data-flow. Add ARM unit tests.
-- [ ] B2: combined-CFG `loop_count` inflation — `build_cfg` merges all functions;
+- [x] B2: combined-CFG `loop_count` inflation — `build_cfg` merges all functions;
        cross-function tail `jmp`/`call` edges are counted as loops. Skip edges that
        leave the owning function (pass `func_of` into `count_back_edges`); keep the
        per-function GUI CFG correct. Add a regression test.
 - [ ] B3 (track): indirect control flow (`call rax`, `jmp [table]`, PLT/GOT) is not
        followed; document the limitation and add best-effort resolution later.
-- [ ] B4: `analyze --json` never carries renames — add `--rename-file` (json/csv) so
-       renames round-trip into `analyze` output and relabel functions.
+- [x] B4: `analyze --json` never carries renames — add `--rename-file` (json/csv/idc)
+       so renames round-trip into `analyze` output and relabel functions.
 
 ### Missing features (P0)
 
-- [ ] DWARF debug-info import (feature `debuginfo`): currently only PDB + inline ELF
-       `.symtab`. Parse DWARF subprogram names/addresses from ELF and flow them into
-       `function.name` (guarded so parse never fails on missing DWARF).
-- [ ] Interactive rename/comment import in the GUI (load a rename file) to match the
+- [x] DWARF debug-info import (feature `debuginfo`): ELF `.symtab` + DWARF subprogram
+       names/addresses flow into `function.name` (guarded; missing DWARF is ignored).
+- [x] Interactive rename/comment import in the GUI (load a rename file) to match the
        existing export paths.
 
 ### Innovation / backlog (unchecked Phase 8)
 
-- [ ] `armature serve` — headless web UI serving analysis over HTTP (feature `serve`).
+- [x] `armature serve` — headless web UI serving analysis over HTTP (feature `serve`).
 - [ ] Shared script/template marketplace repo (recipe gallery + plugin registry).
 
 ### Usability & automation
 
-- [ ] `just setup` recipe (add `wasm32-unknown-unknown` target, install git hooks).
-- [ ] Clearer feature-missing errors: keep `--pdb`/`--rename-file` present and return a
-       "built without the `debuginfo` feature" message instead of "unexpected argument".
-- [ ] README: note the browser-demo (`build-wasm-gui`) and a recipe-gallery doc.
+- [x] `just setup` recipe (add `wasm32-unknown-unknown` target, install git hooks).
+- [x] Clearer feature-missing errors: `--pdb`/`--rename-file` are always present; a
+       missing `debuginfo` build returns a clear message instead of "unexpected argument".
+- [x] README: note the browser-demo (`build-wasm-gui`) and the `serve` headless UI.
 
 ### Validation
 

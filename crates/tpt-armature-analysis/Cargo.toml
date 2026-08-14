@@ -25,3 +25,4 @@ tpt-armature-ir = { path = "../tpt-armature-ir" }
 tpt-armature-formats = { path = "../tpt-armature-formats" }
 tpt-armature-disasm = { path = "../tpt-armature-disasm" }
 thiserror.workspace = true
+serde_json = "1"

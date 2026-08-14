@@ -110,3 +110,110 @@ pub fn parse_with_pdb(pe_bytes: &[u8], pdb_bytes: &[u8]) -> Result<crate::map::M
     }
     Ok(map)
 }
+
+/// Extract function names and addresses from DWARF debug info in an ELF image
+/// (feature `debuginfo`). Each `DW_TAG_subprogram` with a `DW_AT_name` and a
+/// `DW_AT_low_pc` becomes a [`DebugSymbol`], enriching the function names that
+/// flow into `function.name` during analysis. Any parsing failure degrades
+/// gracefully to "no DWARF" so a missing or malformed debug section never breaks
+/// binary ingestion.
+#[cfg(feature = "debuginfo")]
+pub fn parse_dwarf_elf(elf: &goblin::elf::Elf<'_>, bytes: &[u8]) -> Vec<DebugSymbol> {
+    use gimli::{EndianSlice, LittleEndian, SectionId};
+
+    // Borrow each named ELF section's bytes from `bytes` so the slices outlive
+    // the `Dwarf` we build (the closure returns `EndianSlice`s tied to `bytes`).
+    let section_bytes = |name: &str| -> Option<&[u8]> {
+        for sh in &elf.section_headers {
+            if elf
+                .shdr_strtab
+                .get_at(sh.sh_name)
+                .map(|s| s == name)
+                .unwrap_or(false)
+            {
+                if let Some(r) = sh.file_range() {
+                    if r.end <= bytes.len() {
+                        return Some(&bytes[r.start..r.end]);
+                    }
+                }
+            }
+        }
+        None
+    };
+
+    let dwarf = gimli::Dwarf::load(
+        |id: SectionId| -> std::result::Result<EndianSlice<LittleEndian>, gimli::Error> {
+            Ok(EndianSlice::new(
+                section_bytes(id.name()).unwrap_or(&[]),
+                LittleEndian,
+            ))
+        },
+    );
+    let dwarf = match dwarf {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    fn visit(
+        node: gimli::EntriesTreeNode<EndianSlice<LittleEndian>>,
+        dwarf: &gimli::Dwarf<EndianSlice<LittleEndian>>,
+        out: &mut Vec<DebugSymbol>,
+    ) {
+        {
+            let entry = node.entry();
+            // DW_TAG_subprogram == 0x2e
+            if entry.tag().0 == 0x2e {
+                let mut name = None;
+                let mut low_pc = None;
+                let mut attrs = entry.attrs();
+                while let Some(attr) = attrs.next().unwrap_or(None) {
+                    match attr.name().0 {
+                        // DW_AT_name == 0x03
+                        0x03 => {
+                            if let Some(slice) = attr.string_value(&dwarf.debug_str) {
+                                if let Ok(s) = slice.to_string() {
+                                    name = Some(s.to_string());
+                                }
+                            }
+                        }
+                        // DW_AT_low_pc == 0x11
+                        0x11 => {
+                            low_pc = attr.udata_value();
+                        }
+                        _ => {}
+                    }
+                }
+                if let (Some(name), Some(low_pc)) = (name, low_pc) {
+                    out.push(DebugSymbol {
+                        name,
+                        addr: low_pc,
+                        kind: DebugSymbolKind::Function,
+                    });
+                }
+            }
+        }
+        let mut children = node.children();
+        while let Some(child) = children.next().unwrap_or(None) {
+            visit(child, dwarf, out);
+        }
+    }
+
+    let mut out = Vec::new();
+    let mut units = dwarf.units();
+    while let Ok(Some(header)) = units.next() {
+        let unit = match dwarf.unit(header) {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+        let mut tree = match unit.entries_tree(None) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let root = match tree.root() {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        visit(root, &dwarf, &mut out);
+    }
+    out
+}
