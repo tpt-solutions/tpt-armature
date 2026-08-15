@@ -1,0 +1,5 @@
+{
+  "renames": [
+    { "addr": "0x14034ef30", "name": "test_entry" }
+  ]
+}

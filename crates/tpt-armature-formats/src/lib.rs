@@ -12,7 +12,12 @@ pub mod parse;
 #[cfg(feature = "debuginfo")]
 pub mod debuginfo;
 
+#[cfg(feature = "driver-pe")]
+pub mod driver;
+
 pub use arch::Architecture;
+#[cfg(feature = "driver-pe")]
+pub use driver::{CtlCode, DriverFramework, DriverInfo};
 pub use error::{FormatError, Result};
 pub use map::{BinaryFormat, DebugSymbol, DebugSymbolKind, Export, Import, MemoryMap, Section};
 pub use parse::parse;

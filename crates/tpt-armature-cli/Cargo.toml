@@ -49,3 +49,11 @@ arm = ["tpt-armature-disasm/arm"]
 debuginfo = ["tpt-armature-formats/debuginfo"]
 # Headless web UI: serve the analysis of a binary over HTTP.
 serve = ["dep:tiny_http"]
+# MMIO / register-access mining pass and rnndb register-table export.
+mmio = ["tpt-armature-analysis/mmio"]
+# Register-table / function similarity diffing across two binaries.
+regdiff = ["tpt-armature-analysis/regdiff"]
+# Windows kernel-driver (.sys) profile recovery.
+driver-pe = ["tpt-armature-analysis/driver-pe"]
+# Clean-room analyst mode: structurally enforced export of review-safe artifacts.
+clean-room = ["tpt-armature-analysis/clean-room"]

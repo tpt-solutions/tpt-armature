@@ -206,6 +206,132 @@ fn escape_json(s: &str) -> String {
     out
 }
 
+/// Output format for [`export_register_table`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "mmio")]
+pub enum RegisterTableFormat {
+    /// rnndb-style XML (envytools / nouveau register-database dialect).
+    Rnndb,
+    /// Compact JSON array of register entries.
+    Json,
+}
+
+#[cfg(feature = "mmio")]
+impl RegisterTableFormat {
+    /// Parse a format name from a CLI string (`rnndb` / `json`).
+    pub fn parse(s: &str) -> Option<RegisterTableFormat> {
+        match s.to_ascii_lowercase().as_str() {
+            "rnndb" => Some(RegisterTableFormat::Rnndb),
+            "json" => Some(RegisterTableFormat::Json),
+            _ => None,
+        }
+    }
+}
+
+/// Serialize a mined [`RegisterTable`] to the requested [`RegisterTableFormat`].
+///
+/// `rnndb` emits a minimal but valid rnndb document: every MMIO base becomes a
+/// `<domain>` and every clustered register a `<register>` with its access kind.
+/// `json` emits a flat array suitable for automation / diffing.
+#[cfg(feature = "mmio")]
+pub fn export_register_table(
+    table: &crate::mmio::RegisterTable,
+    domain: &str,
+    format: RegisterTableFormat,
+) -> String {
+    match format {
+        RegisterTableFormat::Json => register_table_to_json(table),
+        RegisterTableFormat::Rnndb => register_table_to_rnndb(table, domain),
+    }
+}
+
+#[cfg(feature = "mmio")]
+fn register_table_to_rnndb(table: &crate::mmio::RegisterTable, domain: &str) -> String {
+    let mut s = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    s.push_str("<rnndb name=\"tpt-armature-mmio\">\n");
+    let mut bases = table.bases();
+    bases.sort();
+    for base in bases {
+        s.push_str(&format!(
+            "  <domain name=\"{}\" id=\"0x{:x}\">\n",
+            escape_xml(domain),
+            base
+        ));
+        if let Some(entries) = table.get(base) {
+            for e in entries {
+                let name = e
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("REG_0x{:x}", e.offset));
+                s.push_str(&format!(
+                    "    <register name=\"{}\" offset=\"0x{:x}\" width=\"{}\">\n",
+                    escape_xml(&name),
+                    e.offset,
+                    e.width as u64 * 8
+                ));
+                s.push_str(&format!("      <access rw=\"{}\"/>\n", e.rw_kind.as_str()));
+                s.push_str("    </register>\n");
+            }
+        }
+        s.push_str("  </domain>\n");
+    }
+    s.push_str("</rnndb>\n");
+    s
+}
+
+#[cfg(feature = "mmio")]
+fn register_table_to_json(table: &crate::mmio::RegisterTable) -> String {
+    let mut s = String::from("[\n");
+    let mut bases = table.bases();
+    bases.sort();
+    let mut first = true;
+    for base in bases {
+        if let Some(entries) = table.get(base) {
+            for e in entries {
+                let name = e
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("REG_0x{:x}", e.offset));
+                if !first {
+                    s.push_str(",\n");
+                }
+                s.push_str(&format!(
+                    "  {{ \"base\": \"0x{:x}\", \"name\": \"{}\", \"offset\": \"0x{:x}\", \
+                     \"width\": {}, \"access\": \"{}\", \"accesses\": {} }}",
+                    base,
+                    escape_json(&name),
+                    e.offset,
+                    e.width,
+                    e.rw_kind.as_str(),
+                    e.access_addresses.len()
+                ));
+                first = false;
+            }
+        }
+    }
+    if !first {
+        s.push('\n');
+    }
+    s.push_str("]\n");
+    s
+}
+
+#[cfg(feature = "mmio")]
+fn escape_xml(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '&' => out.push_str("&amp;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

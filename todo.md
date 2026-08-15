@@ -203,8 +203,9 @@ items, missing-feature P0s, and adoption/usability work.
        cross-function tail `jmp`/`call` edges are counted as loops. Skip edges that
        leave the owning function (pass `func_of` into `count_back_edges`); keep the
        per-function GUI CFG correct. Add a regression test.
-- [ ] B3 (track): indirect control flow (`call rax`, `jmp [table]`, PLT/GOT) is not
-       followed; document the limitation and add best-effort resolution later.
+- [x] B3 (track): indirect control flow (`call rax`, `jmp [table]`, PLT/GOT) is not
+       followed; documented the limitation in `tpt-armature-ir/src/builder.rs`
+       (`branch_target`), best-effort resolution deferred.
 - [x] B4: `analyze --json` never carries renames — add `--rename-file` (json/csv/idc)
        so renames round-trip into `analyze` output and relabel functions.
 
@@ -229,5 +230,98 @@ items, missing-feature P0s, and adoption/usability work.
 
 ### Validation
 
-- [ ] `cargo test --workspace --all-features` green; new ARM + CFG regression tests pass.
-- [ ] `analyze --rename-file` round-trip verified.
+- [x] `cargo test --workspace --all-features` green; new ARM + CFG regression tests pass.
+- [x] `analyze --rename-file` round-trip verified.
+
+## Phase 10 — Driver-RE wedge + tpt-telos invariant layer
+
+Plan: `how-can-we-make-magical-sloth` (Claude plan file). Positions tpt-armature
+against Ghidra/IDA via a sharper wedge — closed-source driver RE for
+open-source Linux driver bring-up — plus a scoped tpt-telos integration for
+proven range/invariant annotations. All new work is opt-in via Cargo features;
+default `cargo build --workspace` must stay untouched.
+
+### Initiative A — Driver reverse-engineering support
+
+- [x] A.1: MMIO/register-access mining pass (`tpt-armature-analysis/src/mmio.rs`,
+       feature `mmio`). Block-local base-pointer provenance tracking over raw
+       `Instruction`/`Operand` (not `defs()/uses()`, which drops memory-operand
+       writes); cluster constant-offset accesses into a `RegisterTable`. Unit
+       tests incl. indexed-addressing exclusion and the stack/MMIO-reuse hard case.
+- [x] A.2: rnndb-style register XML export (`export.rs`, follows the existing
+       `RenameFormat` pattern). New `Command::Mmio` CLI subcommand gated
+       `#[cfg(feature = "mmio")]` (rnndb + json formats, optional `--out`).
+- [x] A.3: Windows PE kernel-driver (`.sys`) support — WDM/KMDF detection in
+       `tpt-armature-formats` (feature `driver-pe`), IRP `MajorFunction` dispatch
+       recovery (reuses A.1's base-provenance matcher), `CTL_CODE` decode +
+       IOCTL extraction (scoped to DeviceIoControl handlers), `DriverProfile`
+       type. New `Command::Driver` CLI subcommand (feature `driver-pe`).
+- [ ] A.4: Clean-room analyst mode (feature `clean-room`) — dedicated
+       `Command::CleanRoomExport`, structurally enforced (signature only accepts
+       `RegisterTable`/`DriverProfile`, never raw IR/decompiled text), SHA-256 +
+       manifest audit trail. `trybuild` compile-fail test for the boundary.
+- [ ] A.5: Rust-for-Linux driver skeleton generation (feature `skeleton`) —
+       native template codegen (no tpt-telos-codegen dependency) emitting
+       `#[repr(C)]` register struct, IOCTL enum, probe/remove stubs from
+       `RegisterTable`/`DriverProfile`. Verify current `kernel` crate trait
+       shape before finalizing the template.
+
+### Initiative B — tpt-telos integration (feature-gated, after Initiative A)
+
+- [ ] B.0: Verify-before-building checklist — confirm actual `tpt-telos-*` crate
+       names/publish location, `tpt-telos-verifier`'s standalone API, that it has
+       no required transitive dep on `tpt-telos-agent`/`-lsp`/`-router`, license
+       files match dual MIT/Apache-2.0, and that a throwaway `cargo add
+       tpt-telos-verifier` builds light in isolation.
+- [ ] B.1: QF_LRA-backed range/invariant annotations on decompiled output
+       (`tpt-armature-analysis/src/invariants.rs`, feature `telos`, git dep on
+       `tpt-telos-verifier` pinned to a commit SHA per the no-path-dep
+       convention). Scoped to bounds-check-guard and offset-chain patterns;
+       fails open (no annotation) when unprovable. Requires adding a small
+       `DecompileOptions` struct to `decompile.rs` (today has none — see
+       `main.rs:357`) to wire the annotation toggle through.
+- [ ] B.2 (speculative): bridge A's `RegisterTable`/`DriverProfile` into
+       `tpt-telos-ir` contracts for verified skeleton codegen. Only pursue if
+       B.0/B.1 confirm a real proof obligation exists beyond A.5's plain
+       templating; not required for A.5 to ship.
+
+### Initiative C — Competitive-parity items (vs. Ghidra/IDA)
+
+- [ ] C.1: FLIRT-equivalent static-library/WDK/HAL/compiler-runtime signature
+       matching (`tpt-armature-analysis/src/siglib.rs`, feature `siglib`).
+       Masked-byte-pattern signatures (SHA-256 of relocation-wildcarded raw
+       bytes), FLIRT-style prefix growth + callee-chain confirmation. Hand-built
+       JSON sig-pack (`export.rs`-style), `Command::BuildSigs`/`MatchSigs` CLI.
+       Reinforces A.3 (skip WDK/HAL/CRT boilerplate in `.sys` drivers).
+- [x] C.2: Register-table/function similarity diffing across firmware/driver
+       revisions (`tpt-armature-analysis/src/regdiff.rs`, feature `regdiff`,
+       implies `mmio`). Jaccard over `RegisterTable` `(offset, width, rw-kind)`
+       tuples + CFG-shape/wildcarded-mnemonic cosine function matching with
+       Diaphora/BSim-style greedy bipartite pairing. New `Command::Regdiff` CLI
+       subcommand (rnndb + json output). Function-similarity half is standalone.
+- [ ] C.3: Real control-flow structuring in the decompiler
+       (`tpt-armature-analysis/src/dominators.rs` + `structure.rs`, feature
+       `structuring`). Cooper/Harvey/Kennedy dominator computation (new —
+       doesn't exist today) + dominator-tree pattern matching (not full
+       Cifuentes interval analysis) to emit real `if`/`while`/`Seq` regions,
+       falling back to `Goto` for irreducible edges. `decompile.rs` gets a
+       `render_structured` path selected via the same `DecompileOptions`
+       struct B.1 introduces (one struct total, not two). Zero dependency on
+       anything else in Phase 10 — best parallel-track candidate.
+- [ ] C.4 (feasibility spike, not committed full scope): SLEIGH-equivalent
+       declarative ISA spec. New crate/module + feature `decl-arch`. Concrete
+       deliverable only: decode RV32I end-to-end via a declarative bit-field
+       spec + runtime interpreter implementing the existing `Disassembler`
+       trait (`disassembler.rs`), wired into `for_architecture` like the `arm`
+       feature is today. Explicitly excludes semantics/p-code, variable-length
+       ISAs, and subtable inheritance — decode-only proof of the interpreter
+       path. Lowest priority; zero dependency on anything else in Phase 10.
+
+### Validation
+
+- [ ] CI matrix: `--features mmio,driver-pe,clean-room,skeleton,siglib,regdiff,structuring`
+       job (no external git dep) separate from a `--features telos` job (git
+       dependency resolution) once B.1 lands, and an isolated `--features
+       decl-arch` job once C.4 lands (spike-quality, droppable independently).
+- [ ] Default `cargo build --workspace` / `cargo fmt --check` / `cargo clippy
+       --workspace --all-targets` stay green and untouched by all of the above.

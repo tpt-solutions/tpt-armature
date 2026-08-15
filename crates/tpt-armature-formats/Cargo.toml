@@ -35,6 +35,9 @@ default = []
 # (notably `Architecture::is_disassemblable`) without pulling in the disassembly
 # backend. `tpt-armature-disasm/arm` enables this feature transitively.
 arm = []
+# Windows kernel-driver (`.sys`) support: driver-framework detection and
+# `CTL_CODE` IOCTL decoding (see `driver.rs`).
+driver-pe = []
 # Debug-information import: ELF `.symtab` recovery (always active under this
 # feature), PDB public-symbol parsing for PE (via the `pdb` crate), and DWARF
 # subprogram names/addresses from ELF (via the `gimli` crate).

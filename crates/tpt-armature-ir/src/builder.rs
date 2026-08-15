@@ -283,6 +283,12 @@ fn walk_function(
 }
 
 /// The branch destination of a control-flow instruction, if it is an immediate.
+///
+/// **Limitation (tracked as Phase 10 B3):** only *immediate* targets are
+/// resolved. Indirect control flow — `call rax`, `jmp [table]`, and PLT/GOT
+/// trampolines — has no static target here, so function recovery stops at the
+/// terminator and such edges are not followed. Best-effort resolution (e.g.
+/// jump-table decoding, import thunk chasing) is deferred.
 fn branch_target(ins: &Instruction) -> Option<u64> {
     match ins.mnemonic {
         Mnemonic::Jmp | Mnemonic::Jcc(_) | Mnemonic::Call => {

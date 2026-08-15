@@ -12,6 +12,57 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use tpt_armature_analysis::{Analysis, Cfg, XrefKind};
 use tpt_armature_ir::{Mnemonic, Module, Operand};
 
+/// Search/Go-to dialog state.
+#[derive(Debug, Default)]
+struct SearchDialog {
+    /// Whether the dialog is open.
+    open: bool,
+    /// Current search query.
+    query: String,
+    /// Search mode: address, symbol, mnemonic, or text.
+    mode: SearchMode,
+    /// Previous results for navigation.
+    results: Vec<usize>,
+    /// Current result index.
+    current_result: usize,
+    /// Whether we're searching forward (true) or backward (false).
+    forward: bool,
+}
+
+/// Search mode for the dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum SearchMode {
+    #[default]
+    Address,
+    Symbol,
+    Mnemonic,
+    Text,
+}
+
+/// Graph view state for pan/zoom.
+#[derive(Debug, Clone, Copy, Default)]
+struct GraphViewState {
+    /// Pan offset.
+    pan: egui::Vec2,
+    /// Zoom factor.
+    zoom: f32,
+    /// Whether the user is currently panning.
+    panning: bool,
+    /// Last mouse position for panning.
+    last_pan_pos: egui::Pos2,
+}
+
+impl GraphViewState {
+    fn new() -> Self {
+        Self {
+            zoom: 1.0,
+            pan: egui::Vec2::ZERO,
+            panning: false,
+            last_pan_pos: egui::Pos2::ZERO,
+        }
+    }
+}
+
 #[cfg(feature = "scripts")]
 use tpt_armature_ext::{default_rename_script, ScriptHost};
 
@@ -106,6 +157,10 @@ struct ArmatureApp {
     goto_text: String,
     /// Search box contents; Enter jumps to the next matching instruction.
     search_text: String,
+    /// Search/Go-to dialog state.
+    search_dialog: SearchDialog,
+    /// Graph view state for pan/zoom.
+    graph_view: GraphViewState,
     /// Selected right-hand info panel tab.
     info_tab: InfoTab,
     /// Path to a renames file (json/csv/idc) to load into the analysis.
@@ -129,6 +184,8 @@ impl ArmatureApp {
             script_output: String::new(),
             goto_text: String::new(),
             search_text: String::new(),
+            search_dialog: SearchDialog::default(),
+            graph_view: GraphViewState::new(),
             info_tab: InfoTab::Strings,
             rename_path: String::new(),
         };
@@ -211,6 +268,9 @@ impl eframe::App for ArmatureApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_load();
 
+        // Handle global keyboard shortcuts
+        self.handle_shortcuts(ctx);
+
         egui::TopBottomPanel::top("status").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(&self.status);
@@ -246,7 +306,7 @@ impl eframe::App for ArmatureApp {
                 // Keyboard navigation of the Assembly view (only when no text
                 // field is focused, so we don't steal cursor keys from the
                 // goto/search boxes).
-                if !editing {
+                if !editing && !self.search_dialog.open {
                     let mut nav = false;
                     if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
                         self.step_selected(1);
@@ -262,6 +322,11 @@ impl eframe::App for ArmatureApp {
                 }
             });
         });
+
+        // Render the search/goto dialog if open
+        if self.search_dialog.open {
+            self.render_search_dialog(ctx);
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| match &self.analysis {
             Some(analysis) => {
@@ -282,6 +347,7 @@ impl eframe::App for ArmatureApp {
                         &self.addr_to_idx,
                         &mut self.selected,
                         &mut self.pending_scroll,
+                        &mut self.graph_view,
                     );
                 });
             }

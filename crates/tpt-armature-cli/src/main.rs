@@ -138,6 +138,58 @@ enum Command {
         #[arg(long, default_value_t = 8080)]
         port: u16,
     },
+    /// Mine MMIO / register accesses and emit a register table (rnndb XML or
+    /// JSON). Requires the `mmio` feature.
+    #[cfg(feature = "mmio")]
+    Mmio {
+        /// Path to the binary.
+        path: PathBuf,
+        /// Export format: `rnndb` (default) or `json`.
+        #[arg(long, default_value = "rnndb")]
+        format: String,
+        /// Domain name used for the rnndb `<domain>` element.
+        #[arg(long, default_value = "MMIO")]
+        domain: String,
+        /// Optional output file (otherwise printed to stdout).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Diff two binaries by register-table Jaccard similarity and greedy
+    /// function matching. Requires the `regdiff` feature.
+    #[cfg(feature = "regdiff")]
+    Regdiff {
+        /// Path to the "before" binary.
+        a: PathBuf,
+        /// Path to the "after" binary.
+        b: PathBuf,
+        /// Minimum similarity (0..=1) for a function pair to be reported.
+        #[arg(long, default_value_t = 0.8)]
+        threshold: f64,
+        /// Emit the result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Recover a Windows kernel-driver (.sys) profile: framework, IRP dispatch
+    /// table, and IOCTLs. Requires the `driver-pe` feature.
+    #[cfg(feature = "driver-pe")]
+    Driver {
+        /// Path to the binary.
+        path: PathBuf,
+        /// Emit the result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Clean-room export: emit only review-safe artifacts (register table and, if
+    /// applicable, driver profile) with a SHA-256 audit manifest. Requires the
+    /// `clean-room` feature.
+    #[cfg(feature = "clean-room")]
+    CleanRoom {
+        /// Path to the binary.
+        path: PathBuf,
+        /// Optional output directory for artifacts + manifest.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -182,6 +234,22 @@ fn main() -> anyhow::Result<()> {
         Command::Watch { path, interval } => cmd_watch(resolve(path), interval),
         #[cfg(feature = "serve")]
         Command::Serve { path, port } => cmd_serve(resolve(path), port),
+        #[cfg(feature = "mmio")]
+        Command::Mmio {
+            path,
+            format,
+            domain,
+            out,
+        } => cmd_mmio(resolve(path), &format, &domain, out),
+        #[cfg(feature = "regdiff")]
+        Command::Regdiff {
+            a,
+            b,
+            threshold,
+            json,
+        } => cmd_regdiff(resolve(a), resolve(b), threshold, json),
+        #[cfg(feature = "driver-pe")]
+        Command::Driver { path, json } => cmd_driver(resolve(path), json),
     }
 }
 
@@ -463,6 +531,139 @@ fn cmd_cfg(path: PathBuf) -> anyhow::Result<()> {
             "  ... {} more edge(s) not shown",
             analysis.cfg.edges.len() - CAP
         );
+    }
+    Ok(())
+}
+
+#[cfg(feature = "mmio")]
+fn cmd_mmio(path: PathBuf, format: &str, domain: &str, out: Option<PathBuf>) -> anyhow::Result<()> {
+    let fmt = tpt_armature_analysis::RegisterTableFormat::parse(format).ok_or_else(|| {
+        anyhow::anyhow!("unknown register-table format '{format}' (expected rnndb|json)")
+    })?;
+    let bytes = load(path)?;
+    let analysis = tpt_armature_analysis::analyze_binary(&bytes)?;
+    let table = tpt_armature_analysis::analyze_mmio_module(
+        &analysis.module,
+        &tpt_armature_analysis::MmioConfig::default(),
+    );
+    if table.is_empty() {
+        eprintln!("no MMIO register accesses recovered (base provenance not found)");
+    }
+    let text = tpt_armature_analysis::export_register_table(&table, domain, fmt);
+    match out {
+        Some(p) => {
+            std::fs::write(&p, text)
+                .map_err(|e| anyhow::anyhow!("cannot write {}: {e}", p.display()))?;
+            println!("wrote {} register entries to {}", table.len(), p.display());
+        }
+        None => print!("{text}"),
+    }
+    Ok(())
+}
+
+#[cfg(feature = "regdiff")]
+fn cmd_regdiff(a: PathBuf, b: PathBuf, threshold: f64, json: bool) -> anyhow::Result<()> {
+    use tpt_armature_analysis::{match_functions, register_table_jaccard, MmioConfig};
+
+    let ba = load(a.clone())?;
+    let bb = load(b.clone())?;
+    let la = tpt_armature_analysis::analyze_binary(&ba)?;
+    let lb = tpt_armature_analysis::analyze_binary(&bb)?;
+
+    let ta = tpt_armature_analysis::analyze_mmio_module(&la.module, &MmioConfig::default());
+    let tb = tpt_armature_analysis::analyze_mmio_module(&lb.module, &MmioConfig::default());
+    let jaccard = register_table_jaccard(&ta, &tb);
+
+    let matches = match_functions(&la.module.functions, &lb.module.functions, threshold);
+
+    if json {
+        let pairs: Vec<String> = matches
+            .iter()
+            .map(|m| {
+                format!(
+                    "    {{ \"a\": \"0x{:x}\", \"b\": \"0x{:x}\", \"similarity\": {} }}",
+                    m.a_addr, m.b_addr, m.similarity
+                )
+            })
+            .collect();
+        println!(
+            "{{\n  \"register_table_jaccard\": {},\n  \"function_matches\": [\n{}\n  ]\n}}",
+            jaccard,
+            pairs.join(",\n")
+        );
+    } else {
+        println!("== TPT Armature :: Regdiff ==");
+        println!("  A: {} ({}, {})", a.display(), la.map.format, la.map.arch);
+        println!("  B: {} ({}, {})", b.display(), lb.map.format, lb.map.arch);
+        println!("  register-table Jaccard : {jaccard:.3}");
+        println!("  function matches (>= {threshold:.2}) : {}", matches.len());
+        for m in &matches {
+            println!(
+                "    0x{:x} <-> 0x{:x}   (sim {:.3})",
+                m.a_addr, m.b_addr, m.similarity
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "driver-pe")]
+fn cmd_driver(path: PathBuf, json: bool) -> anyhow::Result<()> {
+    use tpt_armature_analysis::{recover_driver_profile, IrpMajorFunction};
+    use tpt_armature_formats::driver::DriverInfo;
+
+    let bytes = load(path.clone())?;
+    let info = DriverInfo::detect(&bytes).ok_or_else(|| {
+        anyhow::anyhow!(
+            "{} is not a recognized PE (driver detection failed)",
+            path.display()
+        )
+    })?;
+    let analysis = tpt_armature_analysis::analyze_binary(&bytes)?;
+    let profile = recover_driver_profile(&analysis, &info);
+
+    if json {
+        let dispatch: Vec<String> = profile
+            .dispatch
+            .iter()
+            .map(|(mj, addr)| format!("    {{ \"{mj:?}\": \"0x{addr:x}\" }}"))
+            .collect();
+        let ioctls: Vec<String> = profile
+            .ioctls
+            .iter()
+            .map(|i| {
+                format!(
+                    "    {{ \"code\": \"0x{:x}\", \"device_type\": {}, \"function\": {}, \
+                     \"method\": {}, \"access\": {} }}",
+                    i.code, i.ctl.device_type, i.ctl.function, i.ctl.method, i.ctl.access
+                )
+            })
+            .collect();
+        println!(
+            "{{\n  \"is_driver\": {},\n  \"framework\": \"{:?}\",\n  \"driver_entry\": \"0x{:x}\",\n \
+             \"dispatch\": [\n{}\n  ],\n  \"ioctls\": [\n{}\n  ]\n}}",
+            profile.is_driver,
+            profile.framework,
+            profile.driver_entry,
+            dispatch.join(",\n"),
+            ioctls.join(",\n")
+        );
+    } else {
+        println!("== TPT Armature :: Driver ==");
+        println!("  is driver    : {}", profile.is_driver);
+        println!("  framework    : {:?}", profile.framework);
+        println!("  driver entry : 0x{:x}", profile.driver_entry);
+        println!("  dispatch     : {} IRP handlers", profile.dispatch.len());
+        for (mj, addr) in &profile.dispatch {
+            println!("    IRP_MJ_{mj:?} -> 0x{addr:x}");
+        }
+        println!("  ioctls       : {}", profile.ioctls.len());
+        for i in &profile.ioctls {
+            println!(
+                "    0x{:x}  dev=0x{:x} fn=0x{:x} method={} access={}",
+                i.code, i.ctl.device_type, i.ctl.function, i.ctl.method, i.ctl.access
+            );
+        }
     }
     Ok(())
 }
